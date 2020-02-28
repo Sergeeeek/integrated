@@ -1,27 +1,30 @@
-class Ref<T> {
+class InputWire<T> {
   constructor(private prop: string, private mapper: Function) {}
 
-  get optional(): Ref<void | T> {
-    return new Ref<void | T>(this.prop, this.mapper);
+  get optional(): InputWire<void | T> {
+    return new InputWire<void | T>(this.prop, this.mapper);
   }
 
-  map<U>(mapper: (value: T) => U): Ref<U> {
-    return new Ref<U>(this.prop, (value: T) => mapper(this.mapper(value)));
+  map<U>(mapper: (value: T) => U): InputWire<U> {
+    return new InputWire<U>(this.prop, (value: T) => mapper(this.mapper(value)));
   }
 }
 
-class Sink<T, Storage> {
-  storage: Storage;
-}
+const SinkSymbol = Symbol();
 
-class ArraySink<T> extends Sink<T, Array<T>> {}
+interface Sink<T, Config> {
+  [SinkSymbol]: true,
+}
+type ArraySink<T> = Sink<T, {after: InputWire<unknown>} | never>
+
+declare function createArraySink<T>(): ArraySink<T>;
 
 class SinkRef<T> {}
 
 type RecursiveRef<Deps> = {
   [K in keyof Deps]:
     | RecursiveRef<Deps[K]>
-    | Ref<Deps[K] | RecursiveRef<Deps[K]>>;
+    | InputWire<Deps[K] | RecursiveRef<Deps[K]>>;
 };
 
 type RecursiveTest = RecursiveRef<{
@@ -109,18 +112,6 @@ type SystemConfig<Structure> = {
     [K in keyof NonConfigurable<Structure>]?: {
       disabled?: boolean;
     };
-  } &
-  {
-    [K in keyof (OnlyConfigurable<Structure> &
-      OnlyNonRequiredInjects<Structure>)]: {
-      inject?: GetExtraInjects<Structure[K]>;
-    };
-  } &
-  {
-    [K in keyof (OnlyConfigurable<Structure> &
-      OnlyRequiredInjects<Structure>)]: {
-      inject: GetExtraInjects<Structure[K]>;
-    };
   };
 
 type ConfiguredSystem<Structure> = {
@@ -134,16 +125,27 @@ type OnlySinkKeys<Structure> = {
     : never;
 }[keyof Structure];
 
+type SinkTypes<T extends {[key: string]: Sink<unknown, unknown>} = {}> = {
+  [K in keyof T]: T[K] extends Sink<infer V, infer Config> ? {value: V, config: Config} : never
+}
+
+type GetSinks<Structure> = SinkTypes<Pick<Structure, OnlySinkKeys<Structure>>>
+
+type TestStructure = {asdf: string, sink: Sink<number, Array<number>>, array: ArraySink<string>};
+type Test = GetSinks<TestStructure>
+
+type WireFactory<Structure> = {
+  in<Key extends keyof Structure>(key: Key): InputWire<Structure[Key]>,
+  out<Key extends keyof GetSinks<Structure>>(key: Key, config: GetSinks<Structure>[Key]['config']): SinkRef<GetSinks<Structure>[Key]['value']>
+};
+
+declare var fac: WireFactory<TestStructure>;
+
+fac.out('array')
+
 type System<Structure> = {
   configure(
-    closure: (
-      ref: <Key extends keyof Structure>(key: Key) => Ref<Structure[Key]>,
-      sink: {
-        array: <Key extends OnlySinkKeys<Structure>>(
-          key: Key
-        ) => Structure[Key] extends Sink<infer T, unknown> ? SinkRef<T> : never;
-      }
-    ) => SystemConfig<Structure>
+    closure: (wire: WireFactory<Structure>) => SystemConfig<Structure>
   ): ConfiguredSystem<Structure>;
 };
 
@@ -178,25 +180,25 @@ const testSystem = createSystem({
   }) => ({
     start: () => console.log(config)
   }),
-  sink: new ArraySink<(req: any, next: () => void) => void>(),
+  sink: createArraySink<(req: any, next: () => void) => void>(),
   test: testInjectModule
 });
 
-const configuredSystem = testSystem.configure((ref, sink) => ({
+const configuredSystem = testSystem.configure(wire => ({
   server: {
     config: {
-      host: ref("constant"),
+      host: wire.in("constant"),
       port: 123,
-      array: [ref("constant"), "123"],
-      tuple: ["asdf", ref("date"), ref("date").map(d => d.getTime())],
+      array: [wire.in("constant"), "123"],
+      tuple: [wire.in('constant').map(s => s.toUpperCase()), wire.in("date"), wire.in("date").map(d => d.getTime())],
       nested: {
-        config: ref("date")
+        config: wire.in("date")
       }
     }
   },
   test: {
     inject: {
-      middleware: sink.array("sink")
+      middleware: wire.out('sink', undefined)
     }
   }
 }));
