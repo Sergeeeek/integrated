@@ -1,0 +1,13 @@
+{
+  "name": "ts-module-system",
+  "version": "1.0.0",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "repository": "git@github.com:Sergeeeek/ts-module-system.git",
+  "author": "Sergey Poznyak <Sergeeeekg@gmail.com>",
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "typescript": "^3.8.3"
+  }
+}

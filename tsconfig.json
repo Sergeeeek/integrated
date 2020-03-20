@@ -1,5 +1,9 @@
 {
   "compilerOptions": {
-    "target": "ES2020"
-  }
+    "target": "ES5",
+    "lib": ["ES5", "ES2015.Symbol", "DOM"],
+    "outDir": "dist",
+    "declaration": true
+  },
+  "typeAcquisition": {"enable": true}
 }
