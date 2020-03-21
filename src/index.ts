@@ -1,5 +1,7 @@
+import {array as toposortArray} from 'toposort';
+
 class InputWire<T> {
-  constructor(private prop: string, private mapper: Function) {}
+  constructor(public readonly prop: string, public readonly mapper: Function) {}
 
   get optional(): InputWire<void | T> {
     return new InputWire<void | T>(this.prop, this.mapper);
@@ -21,7 +23,12 @@ type ArraySink<T> = Sink<T, Array<T>, [{after: InputWire<unknown>}?]>
 
 declare function createArraySink<T>(): ArraySink<T>;
 
-class SinkRef<T> {}
+class SinkRef<T, Config extends any[]> {
+  readonly config: Config;
+  constructor(public readonly prop: string, ...config: Config) {
+    this.config = config;
+  }
+}
 
 type RecursiveRef<Deps> = {
   [K in keyof Deps]:
@@ -43,7 +50,7 @@ interface Module<T, Deps, Injects> {
 
 type GetInjects<T> = T extends Module<unknown, unknown, infer Injects>
   ? {
-      [K in keyof Injects]: SinkRef<Injects[K]>;
+      [K in keyof Injects]: SinkRef<Injects[K], any[]>;
     }
   : never;
 
@@ -77,28 +84,27 @@ type CommonConfig<Structure> = {
   }
 }
 
-type ConfigurableAndInjectableKeys<Structure> = OnlyConfigurableKeys<Structure> & RequiredInjectKeys<Structure>;
+type ConfigurableAndInjectableKeys<Structure> = Extract<OnlyConfigurableKeys<Structure>, RequiredInjectKeys<Structure>> | Extract<RequiredInjectKeys<Structure>, OnlyConfigurableKeys<Structure>>;
 type OnlyOnlyConfigurableKeys<Structure> = Exclude<OnlyConfigurableKeys<Structure>, ConfigurableAndInjectableKeys<Structure>>;
 type OnlyInjectableKeys<Structure> = Exclude<RequiredInjectKeys<Structure>, ConfigurableAndInjectableKeys<Structure>>;
 type NonConfigurableNonInjectableKeys<Structure> = Exclude<keyof Structure, ConfigurableAndInjectableKeys<Structure> | OnlyOnlyConfigurableKeys<Structure> | OnlyInjectableKeys<Structure>>
 
-type SystemConfig<Structure> = {
-  [K in NonConfigurableNonInjectableKeys<Structure>]?: {
-    disabled?: boolean,
-  }
-} & {
-  [K in OnlyOnlyConfigurableKeys<Structure>]: {
-    config: GetDeps<Structure[K]>;
-    disabled?: boolean,
-  };
-} &
+type SystemConfig<Structure> =
   {
+    [K in NonConfigurableNonInjectableKeys<Structure>]?: {
+      disabled?: boolean,
+    }
+  } & {
+    [K in OnlyOnlyConfigurableKeys<Structure>]: {
+      config: GetDeps<Structure[K]>;
+      disabled?: boolean,
+    };
+  } & {
     [K in OnlyInjectableKeys<Structure>]: {
       inject: GetInjects<Structure[K]>;
       disabled?: boolean,
     }
-  } &
-  {
+  } & {
     [K in ConfigurableAndInjectableKeys<Structure>]: {
       config: GetDeps<Structure[K]>;
       inject: GetInjects<Structure[K]>;
@@ -107,7 +113,7 @@ type SystemConfig<Structure> = {
   };
 
 type ConfiguredSystem<Structure> = {
-  currentConfig: SystemConfig<Structure>;
+  readonly config: SystemConfig<Structure>;
   start(): void;
 };
 
@@ -141,7 +147,7 @@ type MapToResultTypes<Structure> = {
 
 type WireFactory<Structure> = {
   in<Key extends keyof Structure>(key: Key): InputWire<MapToResultTypes<Structure>[Key]>,
-  out<Key extends keyof GetSinks<Structure>>(key: Key, ...config: GetSinks<Structure>[Key]['config']): SinkRef<GetSinks<Structure>[Key]['value']>
+  out<Key extends keyof GetSinks<Structure>>(key: Key, ...config: GetSinks<Structure>[Key]['config']): SinkRef<GetSinks<Structure>[Key]['value'], GetSinks<Structure>[Key]['config']>
 };
 
 declare var fac: WireFactory<TestStructure>;
@@ -152,18 +158,93 @@ type System<Structure> = {
   ): ConfiguredSystem<Structure>;
 };
 
-declare function createSystem<Structure>(
-  structure: Structure
-): System<Structure>;
-declare function createModule<T, Deps, Injects>(): Module<T, Deps, Injects>;
+// declare function createSystem<Structure>(
+//   structure: Structure
+// ): System<Structure>;
 
-const AuthModule = createModule<
-  void,
-  {
-    db: string
-  },
-  { middleware: (req: any, next: () => void) => void }
->();
+function isPrimitive(v: unknown): v is (string | number | boolean | undefined | null | symbol | Function) {
+  return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'symbol' || typeof v === 'function' || v === undefined || v === null;
+}
+
+function flatten<T>(array: ReadonlyArray<ReadonlyArray<T>>): ReadonlyArray<T> {
+  return array.reduce((acc, next) => acc.concat(next));
+}
+
+function getConfigDeps<T>(config: T): ReadonlyArray<InputWire<unknown>> {
+  if (config instanceof InputWire) {
+    return [config];
+  }
+
+  if (Array.isArray(config)) {
+    return flatten(config.map(getConfigDeps));
+  }
+
+  if (isPrimitive(config)) {
+    return [];
+  }
+
+  if (config instanceof Object) {
+    return flatten(
+      Object.getOwnPropertyNames(config)
+        .map(prop => getConfigDeps(config[prop]))
+    );
+  }
+
+  // Don't know how to traverse that
+  return [];
+}
+
+function createDependencyGraph(definitions: ReadonlyArray<[string, ReadonlyArray<InputWire<unknown>>]>): Array<[string, string]> {
+  const edges: Array<[string, string]> = [];
+  definitions.forEach(([moduleName, deps]) => {
+    deps.forEach(dep => edges.push([dep.prop, moduleName]));
+  });
+
+  return edges;
+}
+
+function createSystem<Structure>(structure: Structure): System<Structure> {
+  return {
+    configure(closure) {
+      const wireFactory: WireFactory<Structure> = {
+        in(key) {
+          return new InputWire(key as string, id => id);
+        },
+        out(key, ...config) {
+          return new SinkRef(key as string, ...config);
+        }
+      };
+
+      const config = closure(wireFactory);
+      console.log(config);
+
+      return {
+        config,
+        start() {
+          const moduleDepsPairs: ReadonlyArray<[
+            string,
+            ReadonlyArray<InputWire<unknown>>
+          ]> = Object.getOwnPropertyNames(config).map((moduleName): [string, ReadonlyArray<InputWire<unknown>>] => [moduleName, getConfigDeps(config[moduleName].config)]);
+
+          const nodes = Object.getOwnPropertyNames(structure);
+          const dependencyGraph = createDependencyGraph(moduleDepsPairs);
+
+          console.log(toposortArray(nodes, dependencyGraph));
+        }
+      }
+    }
+  }
+}
+
+// declare function createModule<T, Deps, Injects>(): Module<T, Deps, Injects>;
+//
+// const AuthModule = createModule<
+//   void,
+//   {
+//     db: string
+//   },
+//   { middleware: (req: any, next: () => void) => void }
+// >();
 
 type refTest = RecursiveRef<{
   host: string;
@@ -177,7 +258,6 @@ const testSystem = createSystem({
   constant: "asdf",
   date: new Date(),
   server: (config: {
-    middlewares: ReadonlyArray<(req: any, next: () => void) => void>
     host: string;
     port: number;
     tuple: [string, Date, number];
@@ -186,14 +266,11 @@ const testSystem = createSystem({
   }) => ({
     start: () => console.log(config)
   }),
-  middlewares: createArraySink<(req: any, next: () => void) => void>(),
-  auth: AuthModule,
 });
 
 const configuredSystem = testSystem.configure(wire => ({
   server: {
     config: {
-      middlewares: wire.in('middlewares'),
       host: wire.in("constant"),
       port: 123,
       array: [wire.in("constant"), "123"],
@@ -203,12 +280,6 @@ const configuredSystem = testSystem.configure(wire => ({
       }
     }
   },
-  auth: {
-    config: {
-      db: wire.in('constant')
-    },
-    inject: {
-      middleware: wire.out('middlewares')
-    }
-  }
 }));
+
+configuredSystem.start();

@@ -9,5 +9,8 @@
   "private": true,
   "devDependencies": {
     "typescript": "^3.8.3"
+  },
+  "dependencies": {
+    "toposort": "^2.0.2"
   }
 }
