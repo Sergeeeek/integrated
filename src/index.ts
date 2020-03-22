@@ -1,3 +1,4 @@
+// @ts-ignore
 import {array as toposortArray} from 'toposort';
 
 class InputWire<T> {
@@ -170,13 +171,15 @@ function flatten<T>(array: ReadonlyArray<ReadonlyArray<T>>): ReadonlyArray<T> {
   return array.reduce((acc, next) => acc.concat(next));
 }
 
-function getConfigDeps<T>(config: T): ReadonlyArray<InputWire<unknown>> {
+type ModuleDepsAndPaths = ReadonlyArray<{path: (string | number | symbol)[], dep: InputWire<unknown>}>;
+
+function getConfigDeps<T>(config: T, path: (string | symbol | number)[] = []): ModuleDepsAndPaths {
   if (config instanceof InputWire) {
-    return [config];
+    return [{path: path, dep: config}];
   }
 
   if (Array.isArray(config)) {
-    return flatten(config.map(getConfigDeps));
+    return flatten(config.map((elem, index) => getConfigDeps(elem, [...path, index])));
   }
 
   if (isPrimitive(config)) {
@@ -186,7 +189,7 @@ function getConfigDeps<T>(config: T): ReadonlyArray<InputWire<unknown>> {
   if (config instanceof Object) {
     return flatten(
       Object.getOwnPropertyNames(config)
-        .map(prop => getConfigDeps(config[prop]))
+        .map(prop => getConfigDeps(config[prop], [...path, prop]))
     );
   }
 
@@ -194,13 +197,51 @@ function getConfigDeps<T>(config: T): ReadonlyArray<InputWire<unknown>> {
   return [];
 }
 
-function createDependencyGraph(definitions: ReadonlyArray<[string, ReadonlyArray<InputWire<unknown>>]>): Array<[string, string]> {
+function createDependencyGraph(definitions: ReadonlyArray<[string, ModuleDepsAndPaths]>): Array<[string, string]> {
   const edges: Array<[string, string]> = [];
   definitions.forEach(([moduleName, deps]) => {
-    deps.forEach(dep => edges.push([dep.prop, moduleName]));
+    deps.forEach(dep => edges.push([dep.dep.prop, moduleName]));
   });
 
   return edges;
+}
+
+function fromPairs<T extends (string | number | symbol), U>(input: ReadonlyArray<[T, U]>): {[K in T]: U} {
+  // @ts-ignore
+  return input.reduce((acc, next) => {
+    return {
+      ...acc,
+      [next[0]]: next[1]
+    }
+  }, {});
+}
+
+type Tail<T extends any[]> = ((...arg: T) => void) extends ((head: any, ...tail: infer Tail) => void) ? Tail : [];
+type TestExtends = Tail<['head', 'tail', 123]>
+
+type SetProp<T, P extends (string | number | symbol)[], U> =
+  P extends [infer Head, ...any[]] ?
+    Head extends keyof T ?
+      {[K in keyof T]: K extends Head ? SetProp<T[Head], Tail<P>, U> : T[K]}
+      : T
+  : P extends [] ? U : never;
+
+type TestProp = SetProp<{nested: {key: string}}, ['nested', 'key'], number>
+
+function set<T, P extends any[], U>(obj: T, path: P, value: U): SetProp<T, P, U> {
+  if (obj === undefined || obj === null) {
+    return;
+  }
+  if (isPrimitive(obj)) {
+
+  }
+  let current = obj;
+
+  for (let i = 0; i < path.length; i++) {
+    current = current[path[i]];
+  }
+
+
 }
 
 function createSystem<Structure>(structure: Structure): System<Structure> {
@@ -208,7 +249,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
     configure(closure) {
       const wireFactory: WireFactory<Structure> = {
         in(key) {
-          return new InputWire(key as string, id => id);
+          return new InputWire(key as string, (id: unknown) => id);
         },
         out(key, ...config) {
           return new SinkRef(key as string, ...config);
@@ -223,13 +264,38 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
         start() {
           const moduleDepsPairs: ReadonlyArray<[
             string,
-            ReadonlyArray<InputWire<unknown>>
-          ]> = Object.getOwnPropertyNames(config).map((moduleName): [string, ReadonlyArray<InputWire<unknown>>] => [moduleName, getConfigDeps(config[moduleName].config)]);
+            ModuleDepsAndPaths
+          ]> = Object.getOwnPropertyNames(config).map((moduleName): [string, ModuleDepsAndPaths] => [moduleName, getConfigDeps(config[moduleName].config)]);
+          const moduleDepsMap = fromPairs(moduleDepsPairs);
 
           const nodes = Object.getOwnPropertyNames(structure);
           const dependencyGraph = createDependencyGraph(moduleDepsPairs);
+          console.log(moduleDepsMap);
 
-          console.log(toposortArray(nodes, dependencyGraph));
+          const sortedModules: (keyof Structure)[] = toposortArray(nodes, dependencyGraph);
+
+          const context: Partial<MapToResultTypes<Structure>> = {};
+          const weakTypeConfig: {
+            [K in (string | number | symbol)]?: SystemConfig<Structure>[keyof SystemConfig<Structure>]
+          } = config;
+
+          for (const module of sortedModules) {
+            const currentModule = structure[module];
+            const moduleConfig = weakTypeConfig.hasOwnProperty(module) ? weakTypeConfig[module] : undefined;
+            let deps;
+
+            if (moduleConfig && moduleConfig.config) {
+              deps = moduleConfig.config;
+
+              for (const dep of moduleDepsMap[module as string]) {
+
+              }
+            }
+
+            if (typeof currentModule === 'function') {
+
+            }
+          }
         }
       }
     }

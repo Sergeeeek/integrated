@@ -12,5 +12,8 @@
   },
   "dependencies": {
     "toposort": "^2.0.2"
+  },
+  "scripts": {
+    "dev": "tsc -p . --watch"
   }
 }

@@ -4,6 +4,10 @@
     "lib": ["ES5", "ES2015.Symbol", "DOM"],
     "outDir": "dist",
     "declaration": true,
+    "sourceMap": true,
+    "declarationMap": true,
+    "downlevelIteration": true,
+    "strict": true,
     "strictNullChecks": true
   },
   "typeAcquisition": {"enable": true}
