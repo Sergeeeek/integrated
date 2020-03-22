@@ -6,9 +6,7 @@
     "declaration": true,
     "sourceMap": true,
     "declarationMap": true,
-    "downlevelIteration": true,
-    "strict": true,
-    "strictNullChecks": true
+    "downlevelIteration": true
   },
   "typeAcquisition": {"enable": true}
 }

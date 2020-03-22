@@ -1,4 +1,3 @@
-// @ts-ignore
 import {array as toposortArray} from 'toposort';
 import {set} from 'shades';
 
@@ -17,11 +16,11 @@ class InputWire<T> {
 const SinkSymbol = Symbol();
 
 interface Sink<T, Return, Config extends any[]> {
-  [SinkSymbol]: true,
-  accept(value: T): Sink<T, Return, Config>,
-  resolve(): Return,
+  [SinkSymbol]: true;
+  accept(value: T): Sink<T, Return, Config>;
+  resolve(): Return;
 }
-type ArraySink<T> = Sink<T, Array<T>, [{after: InputWire<unknown>}?]>
+type ArraySink<T> = Sink<T, Array<T>, [{after: InputWire<any>}?]>
 
 declare function createArraySink<T>(): ArraySink<T>;
 
@@ -38,9 +37,9 @@ type RecursiveRef<Deps> = {
     | InputWire<Deps[K] | RecursiveRef<Deps[K]>>;
 };
 
-type GetDeps<T> = T extends (config: infer V) => unknown
+type GetDeps<T> = T extends (config: infer V) => any
   ? RecursiveRef<V>
-  : T extends Module<unknown, infer V, unknown>
+  : T extends Module<any, infer V, any>
   ? RecursiveRef<V>
   : never;
 
@@ -50,67 +49,53 @@ interface Module<T, Deps, Injects> {
   inject?: (instance: T, deps: Deps) => Injects;
 }
 
-type GetInjects<T> = T extends Module<unknown, unknown, infer Injects>
+type GetInjects<T> = T extends Module<any, any, infer Injects>
   ? {
       [K in keyof Injects]: SinkRef<Injects[K], any[]>;
     }
   : never;
 
-type ConfigurableThing = Module<unknown, unknown, unknown> | ((deps: unknown) => unknown);
-type InjectableThing = Module<unknown, unknown, {}>;
+type ConfigurableThing = ((deps: any) => any) | Module<any, any, any>;
+type InjectableThing = Module<any, any, {}>;
 
 type RequiredKeys<T> = {
   [K in keyof T]-?: {} extends Pick<T, K> ? never : K;
 }[keyof T];
-type OptionalKeys<T> = {
-  [K in keyof T]-?: T[K] extends void ? K : never;
-}[keyof T];
 
-type Asdf = RequiredKeys<{ optional?: string }> extends never ? false : true;
-
-type OnlyConfigurableKeys<Structure> = {
+type ConfigurableKeys<Structure> = {
   [K in keyof Structure]: Structure[K] extends ConfigurableThing ? K : never;
 }[keyof Structure];
-type RequiredInjectKeys<Structure> = {
+type InjectableKeys<Structure> = {
   [K in keyof Structure]: Structure[K] extends InjectableThing
     ? K
     : never;
 }[keyof Structure];
 
-type OnlyConfigurable<T> = Pick<T, OnlyConfigurableKeys<T>>;
-type HasRequiredInjects<T> = Pick<T, RequiredInjectKeys<T>>;
-
-type CommonConfig<Structure> = {
-  [K in keyof Structure]?: {
-    disabled?: boolean,
-  }
-}
-
-type ConfigurableAndInjectableKeys<Structure> = Extract<OnlyConfigurableKeys<Structure>, RequiredInjectKeys<Structure>> | Extract<RequiredInjectKeys<Structure>, OnlyConfigurableKeys<Structure>>;
-type OnlyOnlyConfigurableKeys<Structure> = Exclude<OnlyConfigurableKeys<Structure>, ConfigurableAndInjectableKeys<Structure>>;
-type OnlyInjectableKeys<Structure> = Exclude<RequiredInjectKeys<Structure>, ConfigurableAndInjectableKeys<Structure>>;
-type NonConfigurableNonInjectableKeys<Structure> = Exclude<keyof Structure, ConfigurableAndInjectableKeys<Structure> | OnlyOnlyConfigurableKeys<Structure> | OnlyInjectableKeys<Structure>>
+type ConfigurableAndInjectableKeys<Structure> = Extract<ConfigurableKeys<Structure>, InjectableKeys<Structure>> | Extract<InjectableKeys<Structure>, ConfigurableKeys<Structure>>;
+type OnlyConfigurableKeys<Structure> = Exclude<ConfigurableKeys<Structure>, ConfigurableAndInjectableKeys<Structure>>;
+type OnlyInjectableKeys<Structure> = Exclude<InjectableKeys<Structure>, ConfigurableAndInjectableKeys<Structure>>;
+type NonConfigurableNonInjectableKeys<Structure> = Exclude<keyof Structure, ConfigurableAndInjectableKeys<Structure> | OnlyConfigurableKeys<Structure> | OnlyInjectableKeys<Structure>>
 
 type SystemConfig<Structure> =
   {
     [K in NonConfigurableNonInjectableKeys<Structure>]?: {
-      disabled?: boolean,
+      disabled?: boolean;
     }
   } & {
-    [K in OnlyOnlyConfigurableKeys<Structure>]: {
+    [K in OnlyConfigurableKeys<Structure>]: {
       config: GetDeps<Structure[K]>;
-      disabled?: boolean,
+      disabled?: boolean;
     };
   } & {
     [K in OnlyInjectableKeys<Structure>]: {
       inject: GetInjects<Structure[K]>;
-      disabled?: boolean,
+      disabled?: boolean;
     }
   } & {
     [K in ConfigurableAndInjectableKeys<Structure>]: {
       config: GetDeps<Structure[K]>;
       inject: GetInjects<Structure[K]>;
-      disabled?: boolean,
+      disabled?: boolean;
     }
   };
 
@@ -120,39 +105,35 @@ type ConfiguredSystem<Structure> = {
 };
 
 type OnlySinkKeys<Structure> = {
-  [K in keyof Structure]: Structure[K] extends Sink<unknown, unknown, any[]>
+  [K in keyof Structure]: Structure[K] extends Sink<any, any, any[]>
     ? K
     : never;
 }[keyof Structure];
 
 type SinkTypes<Structure> = {
-  [K in keyof Structure]: Structure[K] extends Sink<infer V, infer R, infer Config> ? {value: V, return: R, config: Config} : never
+  [K in keyof Structure]: Structure[K] extends Sink<infer V, infer R, infer Config> ? {value: V; return: R; config: Config} : never
 }
 
 type GetSinks<Structure> = SinkTypes<Pick<Structure, OnlySinkKeys<Structure>>>
 
 type TestStructure = {
-  asdf: string,
-  sink: Sink<number, Array<number>, []>,
-  array: ArraySink<string>
-  module: Module<void, {dep: string}, {test: string}>
+  asdf: string;
+  sink: Sink<number, Array<number>, []>;
+  array: ArraySink<string>;
+  module: Module<void, {dep: string}, {test: string}>;
 };
 type Test = GetSinks<TestStructure>
 
-type VoidableKeys<T> = {
-  [K in keyof T]-?: T[K] extends void ? K : never
-}[keyof T];
-
 type MapToResultTypes<Structure> = {
-  [K in keyof Structure]: Structure[K] extends Sink<unknown, infer Return, any[]> ? Return : Structure[K]
+  [K in keyof Structure]: Structure[K] extends Sink<any, infer Return, any[]> ? Return : Structure[K]
 }
 
 type WireFactory<Structure> = {
-  in<Key extends keyof Structure>(key: Key): InputWire<MapToResultTypes<Structure>[Key]>,
-  out<Key extends keyof GetSinks<Structure>>(key: Key, ...config: GetSinks<Structure>[Key]['config']): SinkRef<GetSinks<Structure>[Key]['value'], GetSinks<Structure>[Key]['config']>
+  in<Key extends keyof Structure>(key: Key): InputWire<MapToResultTypes<Structure>[Key]>;
+  out<Key extends keyof GetSinks<Structure>>(key: Key, ...config: GetSinks<Structure>[Key]['config']): SinkRef<GetSinks<Structure>[Key]['value'], GetSinks<Structure>[Key]['config']>;
 };
 
-declare var fac: WireFactory<TestStructure>;
+declare let fac: WireFactory<TestStructure>;
 
 type System<Structure> = {
   configure(
@@ -164,7 +145,7 @@ type System<Structure> = {
 //   structure: Structure
 // ): System<Structure>;
 
-function isPrimitive(v: unknown): v is (string | number | boolean | undefined | null | symbol | Function) {
+function isPrimitive(v: any): v is (string | number | boolean | undefined | null | symbol | Function) {
   return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'symbol' || typeof v === 'function' || v === undefined || v === null;
 }
 
@@ -172,7 +153,7 @@ function flatten<T>(array: ReadonlyArray<ReadonlyArray<T>>): ReadonlyArray<T> {
   return array.reduce((acc, next) => acc.concat(next));
 }
 
-type ModuleDepsAndPaths = ReadonlyArray<{path: (string | number | symbol)[], dep: InputWire<unknown>}>;
+type ModuleDepsAndPaths = ReadonlyArray<{path: (string | number | symbol)[]; dep: InputWire<any>}>;
 
 function getConfigDeps<T>(config: T, path: (string | symbol | number)[] = []): ModuleDepsAndPaths {
   if (config instanceof InputWire) {
@@ -207,12 +188,11 @@ function createDependencyGraph(definitions: ReadonlyArray<[string, ModuleDepsAnd
   return edges;
 }
 
-function fromPairs<T extends (string | number | symbol), U>(input: ReadonlyArray<[T, U]>): {[K in T]: U} {
-  // @ts-ignore
-  return input.reduce((acc, next) => {
+function fromPairs<U>(input: ReadonlyArray<[string, U]>): {[key: string]: U} {
+  return input.reduce<{[key: string]: U}>((acc, [key, val]) => {
     return {
       ...acc,
-      [next[0]]: next[1]
+      [key]: val
     }
   }, {});
 }
@@ -222,7 +202,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
     configure(closure) {
       const wireFactory: WireFactory<Structure> = {
         in(key) {
-          return new InputWire(key as string, (id: unknown) => id);
+          return new InputWire(key as string, (id: any) => id);
         },
         out(key, ...config) {
           return new SinkRef(key as string, ...config);
@@ -261,7 +241,6 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
               deps = moduleConfig.config;
 
               for (const dep of moduleDepsMap[module as string]) {
-                // @ts-ignore
                 deps = set(...dep.path)(dep.dep.mapper(context[dep.dep.prop]))(deps);
               }
             }
@@ -270,8 +249,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
             if (typeof currentModule === 'function') {
               context[module] = currentModule(deps);
             } else {
-              // @ts-ignore
-              context[module] = currentModule;
+              context[module] = currentModule as any;
             }
           }
         }
@@ -279,24 +257,6 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
     }
   }
 }
-
-// declare function createModule<T, Deps, Injects>(): Module<T, Deps, Injects>;
-//
-// const AuthModule = createModule<
-//   void,
-//   {
-//     db: string
-//   },
-//   { middleware: (req: any, next: () => void) => void }
-// >();
-
-type refTest = RecursiveRef<{
-  host: string;
-  port: number;
-  tuple: [string, Date, number];
-  array: string[];
-  nested: { config: Date };
-}>;
 
 const testSystem = createSystem({
   constant: "asdf",
