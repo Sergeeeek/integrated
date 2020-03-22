@@ -1,5 +1,6 @@
 // @ts-ignore
 import {array as toposortArray} from 'toposort';
+import {set} from 'shades';
 
 class InputWire<T> {
   constructor(public readonly prop: string, public readonly mapper: Function) {}
@@ -189,7 +190,7 @@ function getConfigDeps<T>(config: T, path: (string | symbol | number)[] = []): M
   if (config instanceof Object) {
     return flatten(
       Object.getOwnPropertyNames(config)
-        .map(prop => getConfigDeps(config[prop], [...path, prop]))
+        .map(prop => getConfigDeps((config as any)[prop], [...path, prop]))
     );
   }
 
@@ -216,34 +217,6 @@ function fromPairs<T extends (string | number | symbol), U>(input: ReadonlyArray
   }, {});
 }
 
-type Tail<T extends any[]> = ((...arg: T) => void) extends ((head: any, ...tail: infer Tail) => void) ? Tail : [];
-type TestExtends = Tail<['head', 'tail', 123]>
-
-type SetProp<T, P extends (string | number | symbol)[], U> =
-  P extends [infer Head, ...any[]] ?
-    Head extends keyof T ?
-      {[K in keyof T]: K extends Head ? SetProp<T[Head], Tail<P>, U> : T[K]}
-      : T
-  : P extends [] ? U : never;
-
-type TestProp = SetProp<{nested: {key: string}}, ['nested', 'key'], number>
-
-function set<T, P extends any[], U>(obj: T, path: P, value: U): SetProp<T, P, U> {
-  if (obj === undefined || obj === null) {
-    return;
-  }
-  if (isPrimitive(obj)) {
-
-  }
-  let current = obj;
-
-  for (let i = 0; i < path.length; i++) {
-    current = current[path[i]];
-  }
-
-
-}
-
 function createSystem<Structure>(structure: Structure): System<Structure> {
   return {
     configure(closure) {
@@ -265,7 +238,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
           const moduleDepsPairs: ReadonlyArray<[
             string,
             ModuleDepsAndPaths
-          ]> = Object.getOwnPropertyNames(config).map((moduleName): [string, ModuleDepsAndPaths] => [moduleName, getConfigDeps(config[moduleName].config)]);
+          ]> = Object.getOwnPropertyNames(config).map((moduleName): [string, ModuleDepsAndPaths] => [moduleName, getConfigDeps((config as any)[moduleName] && (config as any)[moduleName].config)]);
           const moduleDepsMap = fromPairs(moduleDepsPairs);
 
           const nodes = Object.getOwnPropertyNames(structure);
@@ -282,18 +255,23 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
           for (const module of sortedModules) {
             const currentModule = structure[module];
             const moduleConfig = weakTypeConfig.hasOwnProperty(module) ? weakTypeConfig[module] : undefined;
-            let deps;
+            let deps: any;
 
             if (moduleConfig && moduleConfig.config) {
               deps = moduleConfig.config;
 
               for (const dep of moduleDepsMap[module as string]) {
-
+                // @ts-ignore
+                deps = set(...dep.path)(dep.dep.mapper(context[dep.dep.prop]))(deps);
               }
             }
 
-            if (typeof currentModule === 'function') {
 
+            if (typeof currentModule === 'function') {
+              context[module] = currentModule(deps);
+            } else {
+              // @ts-ignore
+              context[module] = currentModule;
             }
           }
         }
