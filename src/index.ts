@@ -15,14 +15,25 @@ class InputWire<T> {
 
 const SinkSymbol = Symbol();
 
-interface Sink<T, Return, Config extends any[]> {
+interface Sink<TAccept, TReturn, TConfig extends any[]> {
   [SinkSymbol]: true;
-  accept(value: T): Sink<T, Return, Config>;
-  resolve(): Return;
+  accept(value: TAccept): Sink<TAccept, TReturn, TConfig>;
+  resolve(): TReturn;
 }
-type ArraySink<T> = Sink<T, Array<T>, [{after: InputWire<any>}?]>
+type ArraySinkConfig = {after: InputWire<any>}
+type ArraySink<T> = Sink<T, Array<T>, [ArraySinkConfig?]>
 
-declare function createArraySink<T>(): ArraySink<T>;
+function createArraySink<T>(entries?: ReadonlyArray<[T, ArraySinkConfig?]>): ArraySink<T> {
+  return {
+    [SinkSymbol]: true,
+    accept(value: T, config?: ArraySinkConfig) {
+      return createArraySink([...entries, [value, config]]);
+    },
+    resolve() {
+      return entries.map(([value]) => value);
+    }
+  };
+}
 
 class SinkRef<T, Config extends any[]> {
   readonly config: Config;
@@ -43,10 +54,30 @@ type GetDeps<T> = T extends (config: infer V) => any
   ? RecursiveRef<V>
   : never;
 
-interface Module<T, Deps, Injects> {
-  deps: Deps;
+const ModuleSymbol = Symbol();
+
+interface ModuleDefinition<T, Deps, Injects> {
   create(deps: Deps): T;
   inject?: (instance: T, deps: Deps) => Injects;
+}
+
+interface Module<T, Deps, Injects> extends ModuleDefinition<T, Deps, Injects> {
+  [ModuleSymbol]: true;
+}
+
+function createModule<T, Deps, Injects>(definition: ModuleDefinition<T, Deps, Injects>): Module<T, Deps, Injects> {
+  return {
+    [ModuleSymbol]: true,
+    ...definition,
+  };
+}
+
+function isModule(value: any): value is Module<any, any, any> {
+  if (value === undefined || value === null) {
+    return false;
+  }
+
+  return Boolean(value[ModuleSymbol]);
 }
 
 type GetInjects<T> = T extends Module<any, any, infer Injects>
@@ -133,8 +164,6 @@ type WireFactory<Structure> = {
   out<Key extends keyof GetSinks<Structure>>(key: Key, ...config: GetSinks<Structure>[Key]['config']): SinkRef<GetSinks<Structure>[Key]['value'], GetSinks<Structure>[Key]['config']>;
 };
 
-declare let fac: WireFactory<TestStructure>;
-
 type System<Structure> = {
   configure(
     closure: (wire: WireFactory<Structure>) => SystemConfig<Structure>
@@ -150,7 +179,7 @@ function isPrimitive(v: any): v is (string | number | boolean | undefined | null
 }
 
 function flatten<T>(array: ReadonlyArray<ReadonlyArray<T>>): ReadonlyArray<T> {
-  return array.reduce((acc, next) => acc.concat(next));
+  return array.reduce((acc, next) => acc.concat(next), []);
 }
 
 type ModuleDepsAndPaths = ReadonlyArray<{path: (string | number | symbol)[]; dep: InputWire<any>}>;
@@ -241,13 +270,20 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
               deps = moduleConfig.config;
 
               for (const dep of moduleDepsMap[module as string]) {
-                deps = set(...dep.path)(dep.dep.mapper(context[dep.dep.prop]))(deps);
+                const setAny: any = set;
+                deps = setAny(...dep.path)(dep.dep.mapper(context[dep.dep.prop]))(deps);
               }
             }
 
-
             if (typeof currentModule === 'function') {
               context[module] = currentModule(deps);
+            } else if (isModule(currentModule)) {
+              const instance = currentModule.create(deps);
+              context[module] = instance;
+
+              if (currentModule.inject) {
+                const injects = currentModule.inject(instance, deps);
+              }
             } else {
               context[module] = currentModule as any;
             }
