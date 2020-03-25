@@ -13,19 +13,19 @@ class InputWire<T> {
   }
 }
 
-function isInputWire(value: any): value is InputWire<any> {
+function isInputWire(value: unknown): value is InputWire<unknown> {
   return value instanceof InputWire;
 }
 
 const SinkSymbol = Symbol();
 
-interface Sink<TAccept, TReturn, TConfig extends any[]> {
+interface Sink<TAccept, TReturn, TConfig extends unknown[]> {
   [SinkSymbol]: true;
-  accept(value: TAccept): Sink<TAccept, TReturn, TConfig>;
+  accept(value: TAccept, ...config: TConfig): Sink<TAccept, TReturn, TConfig>;
   resolve(): TReturn;
 }
 
-function isSink(value: any): value is Sink<any, any, any> {
+function isSink(value: unknown): value is Sink<unknown, unknown, unknown[]> {
   if (value === undefined || value === null) {
     return false;
   }
@@ -33,10 +33,10 @@ function isSink(value: any): value is Sink<any, any, any> {
   return typeof value === 'object' && Boolean(value[SinkSymbol]);
 }
 
-type ArraySinkConfig = {after: InputWire<any>}
+type ArraySinkConfig = {after: InputWire<unknown>}
 type ArraySink<T> = Sink<T, Array<T>, [ArraySinkConfig?]>
 
-function createArraySink<T>(entries?: ReadonlyArray<[T, ArraySinkConfig?]>): ArraySink<T> {
+function createArraySink<T>(entries: ReadonlyArray<[T, ArraySinkConfig?]> = []): ArraySink<T> {
   return {
     [SinkSymbol]: true,
     accept(value: T, config?: ArraySinkConfig) {
@@ -48,7 +48,7 @@ function createArraySink<T>(entries?: ReadonlyArray<[T, ArraySinkConfig?]>): Arr
   };
 }
 
-class SinkRef<T, Config extends any[]> {
+class SinkRef<T, Config extends unknown[]> {
   readonly config: Config;
   constructor(public readonly prop: string, ...config: Config) {
     this.prop = prop;
@@ -56,7 +56,7 @@ class SinkRef<T, Config extends any[]> {
   }
 }
 
-function isSinkRef(value: any): value is SinkRef<any, any> {
+function isSinkRef(value: unknown): value is SinkRef<unknown, unknown[]> {
   return value instanceof SinkRef;
 }
 
@@ -66,9 +66,9 @@ type RecursiveRef<Deps> = {
     | InputWire<Deps[K] | RecursiveRef<Deps[K]>>;
 };
 
-type GetDeps<T> = T extends (config: infer V) => any
+type GetDeps<T> = T extends (config: infer V) => unknown
   ? RecursiveRef<V>
-  : T extends Module<any, infer V, any>
+  : T extends Module<unknown, infer V, unknown>
   ? RecursiveRef<V>
   : never;
 
@@ -83,14 +83,14 @@ interface Module<T, Deps, Injects> extends ModuleDefinition<T, Deps, Injects> {
   [ModuleSymbol]: true;
 }
 
-function createModule<T, Deps, Injects>(definition: ModuleDefinition<T, Deps, Injects>): Module<T, Deps, Injects> {
+function createModule<T, Deps = never, Injects = never>(definition: ModuleDefinition<T, Deps, Injects>): Module<T, Deps, Injects> {
   return {
     [ModuleSymbol]: true,
     ...definition,
   };
 }
 
-function isModule(value: any): value is Module<any, any, any> {
+function isModule(value: unknown): value is Module<unknown, unknown, unknown> {
   if (value === undefined || value === null) {
     return false;
   }
@@ -98,18 +98,14 @@ function isModule(value: any): value is Module<any, any, any> {
   return Boolean(value[ModuleSymbol]);
 }
 
-type GetInjects<T> = T extends Module<any, any, infer Injects>
+type GetInjects<T> = T extends Module<unknown, unknown, infer Injects>
   ? {
-      [K in keyof Injects]: SinkRef<Injects[K], any[]>;
+      [K in keyof Injects]: SinkRef<Injects[K], unknown[]>;
     }
   : never;
 
-type ConfigurableThing = ((deps: any) => any) | Module<any, any, any>;
-type InjectableThing = Module<any, any, {}>;
-
-type RequiredKeys<T> = {
-  [K in keyof T]-?: {} extends Pick<T, K> ? never : K;
-}[keyof T];
+type ConfigurableThing = ((deps: unknown) => unknown) | Module<unknown, unknown, unknown>;
+type InjectableThing = Module<unknown, unknown, {[key: string]: unknown}>;
 
 type ConfigurableKeys<Structure> = {
   [K in keyof Structure]: Structure[K] extends ConfigurableThing ? K : never;
@@ -120,10 +116,17 @@ type InjectableKeys<Structure> = {
     : never;
 }[keyof Structure];
 
+type ConfigurableOrInjectableKeys<Structure> = ConfigurableKeys<Structure> | InjectableKeys<Structure>;
 type ConfigurableAndInjectableKeys<Structure> = Extract<ConfigurableKeys<Structure>, InjectableKeys<Structure>> | Extract<InjectableKeys<Structure>, ConfigurableKeys<Structure>>;
 type OnlyConfigurableKeys<Structure> = Exclude<ConfigurableKeys<Structure>, ConfigurableAndInjectableKeys<Structure>>;
 type OnlyInjectableKeys<Structure> = Exclude<InjectableKeys<Structure>, ConfigurableAndInjectableKeys<Structure>>;
-type NonConfigurableNonInjectableKeys<Structure> = Exclude<keyof Structure, ConfigurableAndInjectableKeys<Structure> | OnlyConfigurableKeys<Structure> | OnlyInjectableKeys<Structure>>
+type NonConfigurableNonInjectableKeys<Structure> = Exclude<keyof Structure, ConfigurableOrInjectableKeys<Structure>>
+
+type NonNeverKeys<T> = {
+  [K in keyof T]: T[K] extends never ? never : K
+}[keyof T];
+
+type RemoveNever<T> = Pick<T, NonNeverKeys<T>>
 
 type SystemConfig<Structure> =
   {
@@ -131,22 +134,13 @@ type SystemConfig<Structure> =
       disabled?: boolean;
     }
   } & {
-    [K in OnlyConfigurableKeys<Structure>]: {
-      config: GetDeps<Structure[K]>;
-      disabled?: boolean;
-    };
-  } & {
-    [K in OnlyInjectableKeys<Structure>]: {
-      inject: GetInjects<Structure[K]>;
-      disabled?: boolean;
-    }
-  } & {
-    [K in ConfigurableAndInjectableKeys<Structure>]: {
+    [K in ConfigurableOrInjectableKeys<Structure>]: RemoveNever<{
       config: GetDeps<Structure[K]>;
       inject: GetInjects<Structure[K]>;
       disabled?: boolean;
-    }
-  };
+    }>
+  }
+;
 
 type ConfiguredSystem<Structure> = {
   readonly config: SystemConfig<Structure>;
@@ -154,7 +148,7 @@ type ConfiguredSystem<Structure> = {
 };
 
 type OnlySinkKeys<Structure> = {
-  [K in keyof Structure]: Structure[K] extends Sink<any, any, any[]>
+  [K in keyof Structure]: Structure[K] extends Sink<unknown, unknown, unknown[]>
     ? K
     : never;
 }[keyof Structure];
@@ -165,16 +159,8 @@ type SinkTypes<Structure> = {
 
 type GetSinks<Structure> = SinkTypes<Pick<Structure, OnlySinkKeys<Structure>>>
 
-type TestStructure = {
-  asdf: string;
-  sink: Sink<number, Array<number>, []>;
-  array: ArraySink<string>;
-  module: Module<void, {dep: string}, {test: string}>;
-};
-type Test = GetSinks<TestStructure>
-
 type MapToResultTypes<Structure> = {
-  [K in keyof Structure]: Structure[K] extends Sink<any, infer Return, any[]> ? Return : Structure[K]
+  [K in keyof Structure]: Structure[K] extends Sink<unknown, infer Return, unknown[]> ? Return : Structure[K]
 }
 
 type WireFactory<Structure> = {
@@ -192,7 +178,7 @@ type System<Structure> = {
 //   structure: Structure
 // ): System<Structure>;
 
-function isPrimitive(v: any): v is (string | number | boolean | undefined | null | symbol | Function) {
+function isPrimitive(v: unknown): v is (string | number | boolean | undefined | null | symbol | Function) {
   return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'symbol' || typeof v === 'function' || v === undefined || v === null;
 }
 
@@ -202,7 +188,7 @@ function flatten<T>(array: ReadonlyArray<ReadonlyArray<T>>): ReadonlyArray<T> {
 
 type FindDeepResult<Search> = ReadonlyArray<{path: (string | number | symbol)[]; value: Search}>;
 
-function findDeep<T, TSearch>(obj: T, predicate: (value: any) => value is TSearch, path: (string | symbol | number)[] = []): FindDeepResult<TSearch> {
+function findDeep<T, TSearch>(obj: T, predicate: (value: unknown) => value is TSearch, path: (string | symbol | number)[] = []): FindDeepResult<TSearch> {
   if (predicate(obj)) {
     return [{path: path, value: obj}];
   }
@@ -218,7 +204,7 @@ function findDeep<T, TSearch>(obj: T, predicate: (value: any) => value is TSearc
   if (obj instanceof Object) {
     return flatten(
       Object.getOwnPropertyNames(obj)
-        .map(prop => findDeep((obj as any)[prop], predicate, [...path, prop]))
+        .map(prop => findDeep((obj as unknown)[prop], predicate, [...path, prop]))
     );
   }
 
@@ -226,22 +212,37 @@ function findDeep<T, TSearch>(obj: T, predicate: (value: any) => value is TSearc
   return [];
 }
 
-function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {inputs: FindDeepResult<InputWire<any>>, outputs: FindDeepResult<SinkRef<any, any>>}]>): Array<[string, string]> {
+function values<T extends {[K in keyof T]: unknown}>(map: T): Array<T[keyof T]> {
+  if (map === undefined || map === null) {
+    return [];
+  }
+  return Object.getOwnPropertyNames(map)
+    .map(prop => map[prop]);
+}
+
+function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isSink: boolean, inputs: FindDeepResult<InputWire<unknown>>, outputs?: {[key: string]: SinkRef<unknown, unknown[]>}}]>): Array<[string, string]> {
   const edges: Array<[string, string]> = [];
-  definitions.forEach(([moduleName, {inputs, outputs}]) => {
+  definitions.forEach(([moduleName, {inputs, outputs, isSink}]) => {
+    if (isSink) {
+      edges.push([`${moduleName}_start_RESERVED`, moduleName]);
+    }
+
     inputs.forEach(dep => edges.push([dep.value.prop, moduleName]));
 
-    outputs.forEach(sinkRef => {
-      const sinkProp = sinkRef.value.prop;
+    if (outputs) {
+      Object.getOwnPropertyNames(outputs).forEach(prop => {
+        const sinkRef = outputs[prop];
+        const sinkProp = sinkRef.prop;
 
-      // Sink is going to be initialized at '${sinkProp}_start_RESERVED'.
-      // To put a value in a sink module will depend on its start point node.
-      // To make sure all sink values are initialized before the sink is used,
-      // module will be a dependency of sink "end" graph node. if you depend on sink "end",
-      // you can be sure that all things that all SinkRefs for that sink are resolved
-      edges.push([`${sinkProp}_start_RESERVED`, moduleName])
-      edges.push([moduleName, sinkProp]);
-    });
+        // Sink is going to be initialized at '${sinkProp}_start_RESERVED'.
+        // To put a value in a sink module will depend on its start point node.
+        // To make sure all sink values are initialized before the sink is used,
+        // module will be a dependency of sink "end" graph node. if you depend on sink "end",
+        // you can be sure that all things that all SinkRefs for that sink are resolved
+        edges.push([`${sinkProp}_start_RESERVED`, moduleName])
+        edges.push([moduleName, sinkProp]);
+      });
+    }
   });
 
   return edges;
@@ -261,7 +262,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
     configure(closure) {
       const wireFactory: WireFactory<Structure> = {
         in(key) {
-          return new InputWire(key as string, (id: any) => id);
+          return new InputWire(key as string, (id: unknown) => id);
         },
         out(key, ...config) {
           return new SinkRef(key as string, ...config);
@@ -277,83 +278,124 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
           const moduleDepsPairs: (readonly [
             string,
             {
-              inputs: FindDeepResult<InputWire<any>>,
-              outputs: {
-
-              },
+              isSink: boolean,
+              inputs: FindDeepResult<InputWire<unknown>>,
+              outputs?: {[key: string]: SinkRef<unknown, unknown[]>},
             }
           ])[] = Object.getOwnPropertyNames(config).map((moduleName) => [moduleName, {
-            inputs: findDeep(config, isInputWire),
-            outputs: findDeep(config, isSinkRef),
+            isSink: isSink(structure[moduleName]),
+            inputs: findDeep(config[moduleName]?.config, isInputWire),
+            outputs: config[moduleName]?.inject,
           }] as const);
           const moduleDepsMap = fromPairs(moduleDepsPairs);
 
           const nodes = Object.getOwnPropertyNames(structure);
           const dependencyGraph = createDependencyGraph(moduleDepsPairs);
-          console.log(moduleDepsMap);
 
           const sortedModules: string[] = toposortArray(nodes, dependencyGraph);
+          console.log({sortedModules});
 
           const context: Partial<MapToResultTypes<Structure>> = {};
           const weakTypeConfig: {
-            [K in (string | number | symbol)]?: SystemConfig<Structure>[keyof SystemConfig<Structure>]
+            [key: string]: SystemConfig<Structure>[keyof SystemConfig<Structure>]
           } = config;
 
           for (const module of sortedModules) {
             const currentModule = structure[module];
             const moduleConfig = weakTypeConfig.hasOwnProperty(module) ? weakTypeConfig[module] : undefined;
-            let deps: any;
+            let deps: unknown;
 
-            if (moduleConfig && moduleConfig.config) {
-              deps = moduleConfig.config;
+            if (moduleConfig && 'config' in moduleConfig) {
+              deps = (moduleConfig as any).config;
 
               for (const dep of moduleDepsMap[module as string].inputs) {
+                const depValue = dep.value.mapper(context[dep.value.prop]);
+
                 const setAny: any = set;
-                deps = setAny(...dep.path)(dep.value.mapper(context[dep.value.prop]))(deps);
+                if (isSink(depValue)) {
+                  deps = setAny(...dep.path)(depValue.resolve())(deps);
+                } else {
+                  deps = setAny(...dep.path)(depValue)(deps);
+                }
               }
             }
 
-            if (typeof currentModule === 'function') {
+            if (isSink(currentModule)) {
+              context[module] = currentModule;
+            } else if (typeof currentModule === 'function') {
               context[module] = currentModule(deps);
             } else if (isModule(currentModule)) {
               const instance = currentModule.create(deps);
               context[module] = instance;
 
               if (currentModule.inject) {
-                const injects = currentModule.inject(instance, deps);
+                const injects: any = currentModule.inject(instance, deps);
+                const injectConfig = moduleDepsMap[module].outputs;
 
-                moduleDepsMap[module].outputs.forEach(output => {
-                  const maybeSink = context[output.value.prop];
+                const allInjects = new Set([
+                  ...Object.getOwnPropertyNames(injects),
+                  ...Object.getOwnPropertyNames(injectConfig)]
+                );
+
+                allInjects.forEach(key => {
+                  if (!(key in injects && key in injectConfig)) {
+                    console.error('Provided by module: ', injects);
+                    console.error('Found in config', injectConfig);
+                    throw new Error(`Tried to inject a value from "${module}", but either the value was not provided or inject destination was not configured.\nSee error above for more details.`);
+                  }
+                  const sinkRef = injectConfig[key];
+                  const maybeSink = context[sinkRef.prop];
 
                   if (isSink(maybeSink)) {
-                    maybeSink.accept()
+                    context[sinkRef.prop] = maybeSink.accept(instance, ...sinkRef.config);
                   } else {
-                    throw new Error(`Tried to inject a value from "${module}" into "${output.value.prop}, but "${output.value.prop} is not a Sink"`)
+                    throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}, but "${sinkRef.prop} is not a Sink"`)
                   }
                 })
               }
             } else {
-              context[module] = currentModule as any;
+              context[module] = currentModule as unknown;
             }
           }
+          console.log(context);
         }
       }
     }
   }
 }
 
+const ServerModule = createModule({
+  create(deps: {host: string, port: number, middleware: readonly string[]}): void {
+    console.log(deps);
+
+    return undefined;
+  },
+});
+interface AuthInstance {
+  auth(creds: {user: string, pass: string}): Promise<{authToken: string}>
+}
+
+const AuthModule = createModule({
+  create({secret}: {secret: string}): AuthInstance {
+    return {
+      auth({user, pass}: {user: string, pass: string}): Promise<{authToken: string}> {
+        return Promise.resolve({authToken: 'asdf'});
+      }
+    };
+  },
+  inject(instance: AuthInstance, deps) {
+    return {
+      middleware: deps.secret,
+    };
+  }
+});
+
 const testSystem = createSystem({
   constant: "asdf",
   date: new Date(),
-  server: (config: {
-    host: string;
-    port: number;
-    tuple: [string, Date, number];
-    array: string[];
-    nested: { config: Date };
-  }) => ({
-    start: () => console.log(config)
-  }),
+  server: ServerModule,
+  middleware: createArraySink<string>(),
+  auth: AuthModule,
 });
 
 const configuredSystem = testSystem.configure(wire => ({
@@ -361,13 +403,17 @@ const configuredSystem = testSystem.configure(wire => ({
     config: {
       host: wire.in("constant"),
       port: 123,
-      array: [wire.in("constant"), "123"],
-      tuple: [wire.in('constant').map(s => s.toUpperCase()), wire.in("date"), wire.in("date").map(d => d.getTime())],
-      nested: {
-        config: wire.in("date")
-      }
-    }
+      middleware: wire.in('middleware'),
+    },
   },
+  auth: {
+    config: {
+      secret: 'asdf'
+    },
+    inject: {
+      middleware: wire.out('middleware')
+    }
+  }
 }));
 
 configuredSystem.start();
