@@ -60,7 +60,7 @@ function isSinkRef(value: unknown): value is SinkRef<unknown, unknown[]> {
   return value instanceof SinkRef;
 }
 
-type RecursiveRef<Deps> = {
+type RecursiveRef<Deps> = Deps extends never ? never : {
   [K in keyof Deps]:
     | RecursiveRef<Deps[K]>
     | InputWire<Deps[K] | RecursiveRef<Deps[K]>>;
@@ -75,7 +75,8 @@ type GetDeps<T> = T extends (config: infer V) => unknown
 const ModuleSymbol = Symbol();
 
 interface ModuleDefinition<T, Deps, Injects> {
-  create(deps: Deps): T;
+  start(deps: Deps): T;
+  stop?: (instance: T) => void,
   inject?: (instance: T, deps: Deps) => Injects;
 }
 
@@ -104,7 +105,7 @@ type GetInjects<T> = T extends Module<unknown, unknown, infer Injects>
     }
   : never;
 
-type ConfigurableThing = ((deps: unknown) => unknown) | Module<unknown, unknown, unknown>;
+type ConfigurableThing = ((...deps: unknown[]) => unknown) | Module<unknown, unknown, unknown>;
 type InjectableThing = Module<unknown, unknown, {[key: string]: unknown}>;
 
 type ConfigurableKeys<Structure> = {
@@ -122,30 +123,65 @@ type OnlyConfigurableKeys<Structure> = Exclude<ConfigurableKeys<Structure>, Conf
 type OnlyInjectableKeys<Structure> = Exclude<InjectableKeys<Structure>, ConfigurableAndInjectableKeys<Structure>>;
 type NonConfigurableNonInjectableKeys<Structure> = Exclude<keyof Structure, ConfigurableOrInjectableKeys<Structure>>
 
-type NonNeverKeys<T> = {
-  [K in keyof T]: T[K] extends never ? never : K
+type NonNeverAndNonEmptyKeys<T> = {
+  [K in keyof T]: T[K] extends never ? never : {} extends T[K] ? never : K
 }[keyof T];
 
-type RemoveNever<T> = Pick<T, NonNeverKeys<T>>
+type RemoveNeverAndEmpty<T> = Pick<T, NonNeverAndNonEmptyKeys<T>>
 
-type SystemConfig<Structure> =
+type NonRequiredKeys<T> = {
+  [K in keyof T]-?: {} extends Pick<T, K> ? K : never;
+}[keyof T];
+
+type NonRequiredNestedKeys<T> = {
+  [K in keyof T]: NonRequiredKeys<T[K]>
+}
+
+type PropagateOptional<T> = {
+  [K in keyof NonRequiredNestedKeys<T>]?: T[K]
+} & {
+  [K in Exclude<keyof T, keyof NonRequiredNestedKeys<T>>]: T[K]
+}
+
+type SystemConfig<Structure> = PropagateOptional<
   {
-    [K in NonConfigurableNonInjectableKeys<Structure>]?: {
-      disabled?: boolean;
-    }
-  } & {
-    [K in ConfigurableOrInjectableKeys<Structure>]: RemoveNever<{
-      config: GetDeps<Structure[K]>;
-      inject: GetInjects<Structure[K]>;
-      disabled?: boolean;
+    [K in keyof Structure]: RemoveNeverAndEmpty<{
+      disabled?: boolean,
+      config: GetDeps<Structure[K]>,
+      inject: GetInjects<Structure[K]>,
     }>
   }
-;
+>;
+//   {
+//     [K in NonConfigurableNonInjectableKeys<Structure>]?: {
+//       disabled?: boolean;
+//     }
+//   } & {
+//     [K in ConfigurableOrInjectableKeys<Structure>]: RemoveNever<{
+//       config: GetDeps<Structure[K]>;
+//       inject: GetInjects<Structure[K]>;
+//       disabled?: boolean;
+//     }>
+//   }
+// ;
 
-type ConfiguredSystem<Structure> = {
-  readonly config: SystemConfig<Structure>;
-  start(): void;
+const SystemMetaSymbol = Symbol();
+type SystemMeta<Structure> = {
+  readonly sortedModules: string[],
+  readonly creator: ConfiguredSystem<Structure>
 };
+type RunningSystemContext<Structure> = MapToResultTypes<Structure> & {
+  [SystemMetaSymbol]: SystemMeta<Structure>,
+};
+
+interface ConfiguredSystem<Structure> extends Module<RunningSystemContext<Structure>, never, never> {
+  readonly definition: Structure;
+  readonly config: SystemConfig<Structure>;
+  start(): RunningSystemContext<Structure>;
+  stop(instance: RunningSystemContext<Structure>): void,
+};
+
+type Test = ConfiguredSystem<{}> extends Module<infer T, unknown, unknown> ? T : never;
 
 type OnlySinkKeys<Structure> = {
   [K in keyof Structure]: Structure[K] extends Sink<unknown, unknown, unknown[]>
@@ -160,7 +196,9 @@ type SinkTypes<Structure> = {
 type GetSinks<Structure> = SinkTypes<Pick<Structure, OnlySinkKeys<Structure>>>
 
 type MapToResultTypes<Structure> = {
-  [K in keyof Structure]: Structure[K] extends Sink<unknown, infer Return, unknown[]> ? Return : Structure[K]
+  [K in keyof Structure]: Structure[K] extends Sink<unknown, infer Return, unknown[]> ? Return :
+    Structure[K] extends (...config: unknown[]) => infer T ? T :
+    Structure[K] extends Module<infer T, unknown, unknown> ? T : Structure[K]
 }
 
 type WireFactory<Structure> = {
@@ -257,6 +295,16 @@ function fromPairs<U>(input: ReadonlyArray<readonly [string, U]>): {[key: string
   }, {});
 }
 
+function getAllNodes<Structure>(structure: Structure): readonly string[] {
+  return flatten(Object.getOwnPropertyNames(structure).map(key => {
+    if (isSink(structure[key])) {
+      return [`${key}_start_RESERVED`, key];
+    } else {
+      return [key];
+    }
+  }));
+}
+
 function createSystem<Structure>(structure: Structure): System<Structure> {
   return {
     configure(closure) {
@@ -272,8 +320,24 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
       const config = closure(wireFactory);
       console.log(config);
 
-      return {
+      const configuredSystem = {
+        [ModuleSymbol]: true as const,
+        definition: structure,
         config,
+        stop(instance: RunningSystemContext<Structure>) {
+          if (instance[SystemMetaSymbol].creator !== configuredSystem) {
+            throw new Error('Tried to stop a running system using a ConfiguredSystem instance that did not start it');
+          }
+          const reverseSortedModules = instance[SystemMetaSymbol].sortedModules.reverse();
+
+          for (const moduleName of reverseSortedModules) {
+            if (isModule(structure[moduleName])) {
+              if (structure[moduleName].stop) {
+                structure[moduleName].stop(instance[moduleName]);
+              }
+            }
+          }
+        },
         start() {
           const moduleDepsPairs: (readonly [
             string,
@@ -289,7 +353,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
           }] as const);
           const moduleDepsMap = fromPairs(moduleDepsPairs);
 
-          const nodes = Object.getOwnPropertyNames(structure);
+          const nodes = getAllNodes(structure);
           const dependencyGraph = createDependencyGraph(moduleDepsPairs);
 
           const sortedModules: string[] = toposortArray(nodes, dependencyGraph);
@@ -300,7 +364,12 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
             [key: string]: SystemConfig<Structure>[keyof SystemConfig<Structure>]
           } = config;
 
-          for (const module of sortedModules) {
+          for (const moduleName of sortedModules) {
+            const module = moduleName.replace(/_start_RESERVED$/, '');
+            // If context already has a module, that means that it's a sink
+            if (context[module]) {
+              continue;
+            }
             const currentModule = structure[module];
             const moduleConfig = weakTypeConfig.hasOwnProperty(module) ? weakTypeConfig[module] : undefined;
             let deps: unknown;
@@ -325,7 +394,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
             } else if (typeof currentModule === 'function') {
               context[module] = currentModule(deps);
             } else if (isModule(currentModule)) {
-              const instance = currentModule.create(deps);
+              const instance = currentModule.start(deps);
               context[module] = instance;
 
               if (currentModule.inject) {
@@ -347,9 +416,9 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
                   const maybeSink = context[sinkRef.prop];
 
                   if (isSink(maybeSink)) {
-                    context[sinkRef.prop] = maybeSink.accept(instance, ...sinkRef.config);
+                    context[sinkRef.prop] = maybeSink.accept(injects[sinkRef.prop], ...sinkRef.config);
                   } else {
-                    throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}, but "${sinkRef.prop} is not a Sink"`)
+                    throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}", but "${sinkRef.prop}" is not a Sink"`)
                   }
                 })
               }
@@ -357,43 +426,78 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
               context[module] = currentModule as unknown;
             }
           }
-          console.log(context);
+          const fullContext: MapToResultTypes<Structure> = context as any;
+
+          const runningSystem: RunningSystemContext<Structure> = {
+            ...fullContext,
+            [SystemMetaSymbol]: {
+              creator: configuredSystem,
+              sortedModules,
+            },
+          };
+
+          return runningSystem;
         }
-      }
+      };
+
+      return configuredSystem;
     }
   }
 }
 
 const ServerModule = createModule({
-  create(deps: {host: string, port: number, middleware: readonly string[]}): void {
-    console.log(deps);
+  start(deps: {host: string, port: number, middleware: readonly string[]}): void {
+    console.log('server create', {middleware: deps.middleware});
 
     return undefined;
+  },
+  stop() {
+    console.log('destroying server');
   },
 });
 interface AuthInstance {
   auth(creds: {user: string, pass: string}): Promise<{authToken: string}>
 }
 
-const AuthModule = createModule({
-  create({secret}: {secret: string}): AuthInstance {
+const AuthModule = createModule<AuthInstance, {secret: string}, {middleware: string}>({
+  start({secret}) {
     return {
       auth({user, pass}: {user: string, pass: string}): Promise<{authToken: string}> {
         return Promise.resolve({authToken: 'asdf'});
       }
     };
   },
-  inject(instance: AuthInstance, deps) {
+  stop(instance) {
+    console.log('destroying auth');
+  },
+  inject(_instance, deps) {
     return {
       middleware: deps.secret,
     };
   }
 });
 
+const EnvModule = () => {
+  return {
+    get(env: string): string | undefined {
+      return env;
+    }
+  };
+};
+
+const subSystem = createSystem({
+  test: 'I\'m a subsystem',
+}).configure(() => {
+  return {};
+});
+
+
 const testSystem = createSystem({
-  constant: "asdf",
-  date: new Date(),
+  subSystem,
   server: ServerModule,
+  constant: "asdf",
+  env: EnvModule,
+  date: new Date(),
   middleware: createArraySink<string>(),
   auth: AuthModule,
 });
@@ -401,14 +505,14 @@ const testSystem = createSystem({
 const configuredSystem = testSystem.configure(wire => ({
   server: {
     config: {
-      host: wire.in("constant"),
+      host: wire.in('env').map(env => env.get('SERVER_HOST')),
       port: 123,
       middleware: wire.in('middleware'),
     },
   },
   auth: {
     config: {
-      secret: 'asdf'
+      secret: wire.in('subSystem').map(s => s.test),
     },
     inject: {
       middleware: wire.out('middleware')
@@ -416,4 +520,5 @@ const configuredSystem = testSystem.configure(wire => ({
   }
 }));
 
-configuredSystem.start();
+const runningSystem = configuredSystem.start();
+configuredSystem.stop(runningSystem);
