@@ -1,15 +1,15 @@
-import {array as toposortArray} from 'toposort';
+import * as toposort from 'toposort';
 import {set} from 'shades';
 
 class InputWire<T> {
-  constructor(public readonly prop: string, public readonly mapper: Function) {}
+  constructor(public readonly prop: string, public readonly isOptional: boolean = false, public readonly mapper: Function = (id: T) => id) {}
 
   get optional(): InputWire<void | T> {
-    return new InputWire<void | T>(this.prop, this.mapper);
+    return new InputWire<void | T>(this.prop, true, this.mapper);
   }
 
   map<U>(mapper: (value: T) => U): InputWire<U> {
-    return new InputWire<U>(this.prop, (value: T) => mapper(this.mapper(value)));
+    return new InputWire<U>(this.prop, this.isOptional, (value: T) => mapper(this.mapper(value)));
   }
 }
 
@@ -17,30 +17,30 @@ function isInputWire(value: unknown): value is InputWire<unknown> {
   return value instanceof InputWire;
 }
 
-const SinkSymbol = Symbol();
+const SocketSymbol = Symbol();
 
-interface Sink<TAccept, TReturn, TConfig extends unknown[]> {
-  [SinkSymbol]: true;
-  accept(value: TAccept, ...config: TConfig): Sink<TAccept, TReturn, TConfig>;
+interface Socket<TAccept, TReturn, TConfig extends unknown[]> {
+  [SocketSymbol]: true;
+  accept(value: TAccept, ...config: TConfig): Socket<TAccept, TReturn, TConfig>;
   resolve(): TReturn;
 }
 
-function isSink(value: unknown): value is Sink<unknown, unknown, unknown[]> {
+function isSocket(value: unknown): value is Socket<unknown, unknown, unknown[]> {
   if (value === undefined || value === null) {
     return false;
   }
 
-  return typeof value === 'object' && Boolean(value[SinkSymbol]);
+  return typeof value === 'object' && Boolean(value[SocketSymbol]);
 }
 
-type ArraySinkConfig = {after: InputWire<unknown>}
-type ArraySink<T> = Sink<T, Array<T>, [ArraySinkConfig?]>
+type ArraySocketConfig = {after: InputWire<unknown>}
+type ArraySocket<T> = Socket<T, Array<T>, [ArraySocketConfig?]>
 
-function createArraySink<T>(entries: ReadonlyArray<[T, ArraySinkConfig?]> = []): ArraySink<T> {
+function createArraySocket<T>(entries: ReadonlyArray<[T, ArraySocketConfig?]> = []): ArraySocket<T> {
   return {
-    [SinkSymbol]: true,
-    accept(value: T, config?: ArraySinkConfig) {
-      return createArraySink([...entries, [value, config]]);
+    [SocketSymbol]: true,
+    accept(value: T, config?: ArraySocketConfig) {
+      return createArraySocket([...entries, [value, config]]);
     },
     resolve() {
       return entries.map(([value]) => value);
@@ -48,16 +48,19 @@ function createArraySink<T>(entries: ReadonlyArray<[T, ArraySinkConfig?]> = []):
   };
 }
 
-class SinkRef<T, Config extends unknown[]> {
+class OutputWire<T, Config extends unknown[]> {
   readonly config: Config;
-  constructor(public readonly prop: string, ...config: Config) {
-    this.prop = prop;
+  constructor(public readonly prop: string, public readonly mapper: Function = (id: T) => id, ...config: Config) {
     this.config = config;
+  }
+
+  map<U>(mapper: (val: T) => U): OutputWire<U, Config> {
+    return new OutputWire(this.prop, (val: T) => mapper(this.mapper(val)), ...this.config);
   }
 }
 
-function isSinkRef(value: unknown): value is SinkRef<unknown, unknown[]> {
-  return value instanceof SinkRef;
+function isOutputWire(value: unknown): value is OutputWire<unknown, unknown[]> {
+  return value instanceof OutputWire;
 }
 
 type RecursiveRef<Deps> = Deps extends never ? never : {
@@ -101,7 +104,7 @@ function isModule(value: unknown): value is Module<unknown, unknown, unknown> {
 
 type GetInjects<T> = T extends Module<unknown, unknown, infer Injects>
   ? {
-      [K in keyof Injects]: SinkRef<Injects[K], unknown[]>;
+      [K in keyof Injects]: OutputWire<Injects[K], unknown[]>;
     }
   : never;
 
@@ -152,18 +155,6 @@ type SystemConfig<Structure> = PropagateOptional<
     }>
   }
 >;
-//   {
-//     [K in NonConfigurableNonInjectableKeys<Structure>]?: {
-//       disabled?: boolean;
-//     }
-//   } & {
-//     [K in ConfigurableOrInjectableKeys<Structure>]: RemoveNever<{
-//       config: GetDeps<Structure[K]>;
-//       inject: GetInjects<Structure[K]>;
-//       disabled?: boolean;
-//     }>
-//   }
-// ;
 
 const SystemMetaSymbol = Symbol();
 type SystemMeta<Structure> = {
@@ -181,29 +172,27 @@ interface ConfiguredSystem<Structure> extends Module<RunningSystemContext<Struct
   stop(instance: RunningSystemContext<Structure>): void,
 };
 
-type Test = ConfiguredSystem<{}> extends Module<infer T, unknown, unknown> ? T : never;
-
-type OnlySinkKeys<Structure> = {
-  [K in keyof Structure]: Structure[K] extends Sink<unknown, unknown, unknown[]>
+type OnlySocketKeys<Structure> = {
+  [K in keyof Structure]: Structure[K] extends Socket<unknown, unknown, unknown[]>
     ? K
     : never;
 }[keyof Structure];
 
-type SinkTypes<Structure> = {
-  [K in keyof Structure]: Structure[K] extends Sink<infer V, infer R, infer Config> ? {value: V; return: R; config: Config} : never
+type SocketTypes<Structure> = {
+  [K in keyof Structure]: Structure[K] extends Socket<infer V, infer R, infer Config> ? {value: V; return: R; config: Config} : never
 }
 
-type GetSinks<Structure> = SinkTypes<Pick<Structure, OnlySinkKeys<Structure>>>
+type GetSockets<Structure> = SocketTypes<Pick<Structure, OnlySocketKeys<Structure>>>
 
 type MapToResultTypes<Structure> = {
-  [K in keyof Structure]: Structure[K] extends Sink<unknown, infer Return, unknown[]> ? Return :
+  [K in keyof Structure]: Structure[K] extends Socket<unknown, infer Return, unknown[]> ? Return :
     Structure[K] extends (...config: unknown[]) => infer T ? T :
     Structure[K] extends Module<infer T, unknown, unknown> ? T : Structure[K]
 }
 
 type WireFactory<Structure> = {
   in<Key extends keyof Structure>(key: Key): InputWire<MapToResultTypes<Structure>[Key]>;
-  out<Key extends keyof GetSinks<Structure>>(key: Key, ...config: GetSinks<Structure>[Key]['config']): SinkRef<GetSinks<Structure>[Key]['value'], GetSinks<Structure>[Key]['config']>;
+  out<Key extends keyof GetSockets<Structure>>(key: Key, ...config: GetSockets<Structure>[Key]['config']): OutputWire<GetSockets<Structure>[Key]['value'], GetSockets<Structure>[Key]['config']>;
 };
 
 type System<Structure> = {
@@ -258,10 +247,10 @@ function values<T extends {[K in keyof T]: unknown}>(map: T): Array<T[keyof T]> 
     .map(prop => map[prop]);
 }
 
-function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isSink: boolean, inputs: FindDeepResult<InputWire<unknown>>, outputs?: {[key: string]: SinkRef<unknown, unknown[]>}}]>): Array<[string, string]> {
+function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isSocket: boolean, inputs: FindDeepResult<InputWire<unknown>>, outputs?: {[key: string]: OutputWire<unknown, unknown[]>}}]>): Array<[string, string]> {
   const edges: Array<[string, string]> = [];
-  definitions.forEach(([moduleName, {inputs, outputs, isSink}]) => {
-    if (isSink) {
+  definitions.forEach(([moduleName, {inputs, outputs, isSocket}]) => {
+    if (isSocket) {
       edges.push([`${moduleName}_start_RESERVED`, moduleName]);
     }
 
@@ -272,7 +261,7 @@ function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isS
         const sinkRef = outputs[prop];
         const sinkProp = sinkRef.prop;
 
-        // Sink is going to be initialized at '${sinkProp}_start_RESERVED'.
+        // Socket is going to be initialized at '${sinkProp}_start_RESERVED'.
         // To put a value in a sink module will depend on its start point node.
         // To make sure all sink values are initialized before the sink is used,
         // module will be a dependency of sink "end" graph node. if you depend on sink "end",
@@ -297,7 +286,7 @@ function fromPairs<U>(input: ReadonlyArray<readonly [string, U]>): {[key: string
 
 function getAllNodes<Structure>(structure: Structure): readonly string[] {
   return flatten(Object.getOwnPropertyNames(structure).map(key => {
-    if (isSink(structure[key])) {
+    if (isSocket(structure[key])) {
       return [`${key}_start_RESERVED`, key];
     } else {
       return [key];
@@ -310,15 +299,14 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
     configure(closure) {
       const wireFactory: WireFactory<Structure> = {
         in(key) {
-          return new InputWire(key as string, (id: unknown) => id);
+          return new InputWire(key as string);
         },
         out(key, ...config) {
-          return new SinkRef(key as string, ...config);
+          return new OutputWire(key as string, (id: unknown) => id, ...config);
         }
       };
 
       const config = closure(wireFactory);
-      console.log(config);
 
       const configuredSystem = {
         [ModuleSymbol]: true as const,
@@ -342,12 +330,12 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
           const moduleDepsPairs: (readonly [
             string,
             {
-              isSink: boolean,
+              isSocket: boolean,
               inputs: FindDeepResult<InputWire<unknown>>,
-              outputs?: {[key: string]: SinkRef<unknown, unknown[]>},
+              outputs?: {[key: string]: OutputWire<unknown, unknown[]>},
             }
           ])[] = Object.getOwnPropertyNames(config).map((moduleName) => [moduleName, {
-            isSink: isSink(structure[moduleName]),
+            isSocket: isSocket(structure[moduleName]),
             inputs: findDeep(config[moduleName]?.config, isInputWire),
             outputs: config[moduleName]?.inject,
           }] as const);
@@ -356,7 +344,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
           const nodes = getAllNodes(structure);
           const dependencyGraph = createDependencyGraph(moduleDepsPairs);
 
-          const sortedModules: string[] = toposortArray(nodes, dependencyGraph);
+          const sortedModules: string[] = toposort.array(nodes, dependencyGraph);
           console.log({sortedModules});
 
           const context: Partial<MapToResultTypes<Structure>> = {};
@@ -381,7 +369,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
                 const depValue = dep.value.mapper(context[dep.value.prop]);
 
                 const setAny: any = set;
-                if (isSink(depValue)) {
+                if (isSocket(depValue)) {
                   deps = setAny(...dep.path)(depValue.resolve())(deps);
                 } else {
                   deps = setAny(...dep.path)(depValue)(deps);
@@ -389,7 +377,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
               }
             }
 
-            if (isSink(currentModule)) {
+            if (isSocket(currentModule)) {
               context[module] = currentModule;
             } else if (typeof currentModule === 'function') {
               context[module] = currentModule(deps);
@@ -415,10 +403,10 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
                   const sinkRef = injectConfig[key];
                   const maybeSink = context[sinkRef.prop];
 
-                  if (isSink(maybeSink)) {
-                    context[sinkRef.prop] = maybeSink.accept(injects[sinkRef.prop], ...sinkRef.config);
+                  if (isSocket(maybeSink)) {
+                    context[sinkRef.prop] = maybeSink.accept(sinkRef.mapper(injects[sinkRef.prop]), ...sinkRef.config);
                   } else {
-                    throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}", but "${sinkRef.prop}" is not a Sink"`)
+                    throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}", but "${sinkRef.prop}" is not a Socket"`)
                   }
                 })
               }
@@ -498,7 +486,7 @@ const testSystem = createSystem({
   constant: "asdf",
   env: EnvModule,
   date: new Date(),
-  middleware: createArraySink<string>(),
+  middleware: createArraySocket<string>(),
   auth: AuthModule,
 });
 
@@ -515,7 +503,7 @@ const configuredSystem = testSystem.configure(wire => ({
       secret: wire.in('subSystem').map(s => s.test),
     },
     inject: {
-      middleware: wire.out('middleware')
+      middleware: wire.out('middleware').map(s => s.toUpperCase())
     }
   }
 }));
