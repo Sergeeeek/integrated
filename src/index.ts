@@ -4,8 +4,8 @@ import {set} from 'shades';
 class InputWire<T> {
   constructor(public readonly prop: string, public readonly isOptional: boolean = false, public readonly mapper: Function = (id: T) => id) {}
 
-  get optional(): InputWire<void | T> {
-    return new InputWire<void | T>(this.prop, true, this.mapper);
+  get optional(): InputWire<undefined | T> {
+    return new InputWire<undefined | T>(this.prop, true, this.mapper);
   }
 
   map<U>(mapper: (value: T) => U): InputWire<U> {
@@ -30,7 +30,7 @@ function isSocket(value: unknown): value is Socket<unknown, unknown, unknown[]> 
     return false;
   }
 
-  return typeof value === 'object' && Boolean(value[SocketSymbol]);
+  return typeof value === 'object' && Boolean(value && value[SocketSymbol]);
 }
 
 type ArraySocketConfig = {after: InputWire<unknown>}
@@ -99,7 +99,7 @@ function isModule(value: unknown): value is Module<unknown, unknown, unknown> {
     return false;
   }
 
-  return Boolean(value[ModuleSymbol]);
+  return typeof value === 'object' && Boolean(value && value[ModuleSymbol]);
 }
 
 type GetInjects<T> = T extends Module<unknown, unknown, infer Injects>
@@ -107,24 +107,6 @@ type GetInjects<T> = T extends Module<unknown, unknown, infer Injects>
       [K in keyof Injects]: OutputWire<Injects[K], unknown[]>;
     }
   : never;
-
-type ConfigurableThing = ((...deps: unknown[]) => unknown) | Module<unknown, unknown, unknown>;
-type InjectableThing = Module<unknown, unknown, {[key: string]: unknown}>;
-
-type ConfigurableKeys<Structure> = {
-  [K in keyof Structure]: Structure[K] extends ConfigurableThing ? K : never;
-}[keyof Structure];
-type InjectableKeys<Structure> = {
-  [K in keyof Structure]: Structure[K] extends InjectableThing
-    ? K
-    : never;
-}[keyof Structure];
-
-type ConfigurableOrInjectableKeys<Structure> = ConfigurableKeys<Structure> | InjectableKeys<Structure>;
-type ConfigurableAndInjectableKeys<Structure> = Extract<ConfigurableKeys<Structure>, InjectableKeys<Structure>> | Extract<InjectableKeys<Structure>, ConfigurableKeys<Structure>>;
-type OnlyConfigurableKeys<Structure> = Exclude<ConfigurableKeys<Structure>, ConfigurableAndInjectableKeys<Structure>>;
-type OnlyInjectableKeys<Structure> = Exclude<InjectableKeys<Structure>, ConfigurableAndInjectableKeys<Structure>>;
-type NonConfigurableNonInjectableKeys<Structure> = Exclude<keyof Structure, ConfigurableOrInjectableKeys<Structure>>
 
 type NonNeverAndNonEmptyKeys<T> = {
   [K in keyof T]: T[K] extends never ? never : {} extends T[K] ? never : K
@@ -201,10 +183,6 @@ type System<Structure> = {
   ): ConfiguredSystem<Structure>;
 };
 
-// declare function createSystem<Structure>(
-//   structure: Structure
-// ): System<Structure>;
-
 function isPrimitive(v: unknown): v is (string | number | boolean | undefined | null | symbol | Function) {
   return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'symbol' || typeof v === 'function' || v === undefined || v === null;
 }
@@ -231,20 +209,12 @@ function findDeep<T, TSearch>(obj: T, predicate: (value: unknown) => value is TS
   if (obj instanceof Object) {
     return flatten(
       Object.getOwnPropertyNames(obj)
-        .map(prop => findDeep((obj as unknown)[prop], predicate, [...path, prop]))
+        .map(prop => findDeep(obj[prop], predicate, [...path, prop]))
     );
   }
 
   // Don't know how to traverse that
   return [];
-}
-
-function values<T extends {[K in keyof T]: unknown}>(map: T): Array<T[keyof T]> {
-  if (map === undefined || map === null) {
-    return [];
-  }
-  return Object.getOwnPropertyNames(map)
-    .map(prop => map[prop]);
 }
 
 function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isSocket: boolean, inputs: FindDeepResult<InputWire<unknown>>, outputs?: {[key: string]: OutputWire<unknown, unknown[]>}}]>): Array<[string, string]> {
@@ -307,6 +277,9 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
       };
 
       const config = closure(wireFactory);
+      const weakTypeConfig: {
+        [key: string]: SystemConfig<Structure>[keyof SystemConfig<Structure>]
+      } = config;
 
       const configuredSystem = {
         [ModuleSymbol]: true as const,
@@ -319,6 +292,9 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
           const reverseSortedModules = instance[SystemMetaSymbol].sortedModules.reverse();
 
           for (const moduleName of reverseSortedModules) {
+            if (weakTypeConfig[moduleName]?.disabled) {
+              continue;
+            }
             if (isModule(structure[moduleName])) {
               if (structure[moduleName].stop) {
                 structure[moduleName].stop(instance[moduleName]);
@@ -347,10 +323,11 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
           const sortedModules: string[] = toposort.array(nodes, dependencyGraph);
           console.log({sortedModules});
 
+          const isInitializedMap= fromPairs(
+            Object.getOwnPropertyNames(structure)
+              .map(module => [module, false])
+            );
           const context: Partial<MapToResultTypes<Structure>> = {};
-          const weakTypeConfig: {
-            [key: string]: SystemConfig<Structure>[keyof SystemConfig<Structure>]
-          } = config;
 
           for (const moduleName of sortedModules) {
             const module = moduleName.replace(/_start_RESERVED$/, '');
@@ -359,13 +336,22 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
               continue;
             }
             const currentModule = structure[module];
-            const moduleConfig = weakTypeConfig.hasOwnProperty(module) ? weakTypeConfig[module] : undefined;
+            const moduleConfig = weakTypeConfig[module];
+            if (moduleConfig?.disabled) {
+              continue;
+            }
             let deps: unknown;
 
+            // Resolving InputWires to real deps
             if (moduleConfig && 'config' in moduleConfig) {
               deps = (moduleConfig as any).config;
 
               for (const dep of moduleDepsMap[module as string].inputs) {
+                const depConfig = weakTypeConfig[dep.value.prop];
+
+                if (depConfig?.disabled && !dep.value.isOptional) {
+                  throw new Error(`Module "${module}" has a dependency "${dep.value.prop}" at config path "${[module, 'config', ...dep.path].join('.')}", but that dependency is disabled through config and InputWire is not optional.\nPlease remove the disabled flag from "${module}" or make the dependency optional.`);
+                }
                 const depValue = dep.value.mapper(context[dep.value.prop]);
 
                 const setAny: any = set;
@@ -377,6 +363,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
               }
             }
 
+            // Module init
             if (isSocket(currentModule)) {
               context[module] = currentModule;
             } else if (typeof currentModule === 'function') {
@@ -395,13 +382,18 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
                 );
 
                 allInjects.forEach(key => {
-                  if (!(key in injects && key in injectConfig)) {
+                  if (!(key in injects && injectConfig && key in injectConfig)) {
                     console.error('Provided by module: ', injects);
                     console.error('Found in config', injectConfig);
                     throw new Error(`Tried to inject a value from "${module}", but either the value was not provided or inject destination was not configured.\nSee error above for more details.`);
                   }
                   const sinkRef = injectConfig[key];
                   const maybeSink = context[sinkRef.prop];
+                  const sinkConfig = weakTypeConfig[sinkRef.prop];
+
+                  if (sinkConfig?.disabled) {
+                    throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}", but Socket "${sinkRef.prop}" is disabled`)
+                  }
 
                   if (isSocket(maybeSink)) {
                     context[sinkRef.prop] = maybeSink.accept(sinkRef.mapper(injects[sinkRef.prop]), ...sinkRef.config);
@@ -413,6 +405,8 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
             } else {
               context[module] = currentModule as unknown;
             }
+
+            isInitializedMap[module] = true;
           }
           const fullContext: MapToResultTypes<Structure> = context as any;
 
@@ -467,7 +461,7 @@ const AuthModule = createModule<AuthInstance, {secret: string}, {middleware: str
 
 const EnvModule = () => {
   return {
-    get(env: string): string | undefined {
+    get(env: string): string {
       return env;
     }
   };
@@ -495,16 +489,23 @@ const configuredSystem = testSystem.configure(wire => ({
     config: {
       host: wire.in('env').map(env => env.get('SERVER_HOST')),
       port: 123,
-      middleware: wire.in('middleware'),
+      middleware: wire.in('middleware').optional.map(m => m ?? []),
     },
+  },
+  subSystem: {
+    disabled: true,
+  },
+  middleware: {
+    disabled: true,
   },
   auth: {
     config: {
-      secret: wire.in('subSystem').map(s => s.test),
+      secret: wire.in('subSystem').optional.map(s => s?.test ?? 'asdf'),
     },
     inject: {
       middleware: wire.out('middleware').map(s => s.toUpperCase())
-    }
+    },
+    disabled: true,
   }
 }));
 
