@@ -1,5 +1,5 @@
 import * as toposort from 'toposort';
-import {set} from 'shades';
+import {deepSet} from './util';
 
 class InputWire<T> {
   constructor(public readonly prop: string, public readonly isOptional: boolean = false, public readonly mapper: Function = (id: T) => id) {}
@@ -191,15 +191,15 @@ function flatten<T>(array: ReadonlyArray<ReadonlyArray<T>>): ReadonlyArray<T> {
   return array.reduce((acc, next) => acc.concat(next), []);
 }
 
-type FindDeepResult<Search> = ReadonlyArray<{path: (string | number | symbol)[]; value: Search}>;
+type FindDeepResult<Search> = ReadonlyArray<{path: (string | symbol)[]; value: Search}>;
 
-function findDeep<T, TSearch>(obj: T, predicate: (value: unknown) => value is TSearch, path: (string | symbol | number)[] = []): FindDeepResult<TSearch> {
+function findDeep<T, TSearch>(obj: T, predicate: (value: unknown) => value is TSearch, path: (string | symbol)[] = []): FindDeepResult<TSearch> {
   if (predicate(obj)) {
     return [{path: path, value: obj}];
   }
 
   if (Array.isArray(obj)) {
-    return flatten(obj.map((elem, index) => findDeep(elem, predicate, [...path, index])));
+    return flatten(obj.map((elem, index) => findDeep(elem, predicate, [...path, index.toString()])));
   }
 
   if (isPrimitive(obj)) {
@@ -354,11 +354,10 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
                 }
                 const depValue = dep.value.mapper(context[dep.value.prop]);
 
-                const setAny: any = set;
                 if (isSocket(depValue)) {
-                  deps = setAny(...dep.path)(depValue.resolve())(deps);
+                  deps = deepSet(deps, dep.path, depValue.resolve());
                 } else {
-                  deps = setAny(...dep.path)(depValue)(deps);
+                  deps = deepSet(deps, dep.path, depValue);
                 }
               }
             }
