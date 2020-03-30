@@ -70,7 +70,7 @@ type RecursiveRef<Deps> = Deps extends never ? never : {
 };
 
 type GetDeps<T> = T extends (config: infer V) => unknown
-  ? RecursiveRef<V>
+  ? {} extends V ? never : RecursiveRef<V>
   : T extends Module<unknown, infer V, unknown>
   ? RecursiveRef<V>
   : never;
@@ -108,24 +108,21 @@ type GetInjects<T> = T extends Module<unknown, unknown, infer Injects>
     }
   : never;
 
-type NonNeverAndNonEmptyKeys<T> = {
-  [K in keyof T]: T[K] extends never ? never : {} extends T[K] ? never : K
-}[keyof T];
 
-type RemoveNeverAndEmpty<T> = Pick<T, NonNeverAndNonEmptyKeys<T>>
+type RequiredKeys<T> = Exclude<keyof T, {
+  [K in keyof T]: T[K] extends {} ? T[K] extends never ? K : never : K;
+}[keyof T]>;
 
-type NonRequiredKeys<T> = {
-  [K in keyof T]-?: {} extends Pick<T, K> ? K : never;
-}[keyof T];
+type RemoveNeverAndEmpty<T> = Pick<T, RequiredKeys<T>>
 
-type NonRequiredNestedKeys<T> = {
-  [K in keyof T]: NonRequiredKeys<T[K]>
-}
+type RequiredNestedKeys<T> = RequiredKeys<{
+  [K in keyof T]: RequiredKeys<T[K]>
+}>;
 
 type PropagateOptional<T> = {
-  [K in keyof NonRequiredNestedKeys<T>]?: T[K]
+  [K in RequiredNestedKeys<T>]-?: T[K]
 } & {
-  [K in Exclude<keyof T, keyof NonRequiredNestedKeys<T>>]: T[K]
+  [K in Exclude<keyof T, RequiredNestedKeys<T>>]?: T[K]
 }
 
 type SystemConfig<Structure> = PropagateOptional<
@@ -278,7 +275,13 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
 
       const config = closure(wireFactory);
       const weakTypeConfig: {
-        [key: string]: SystemConfig<Structure>[keyof SystemConfig<Structure>]
+        [key: string]: {
+          disabled?: boolean,
+          config?: unknown,
+          inject?: {
+            [injectKey: string]: OutputWire<unknown, unknown[]>
+          }
+        }
       } = config;
 
       const configuredSystem = {
@@ -344,7 +347,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
 
             // Resolving InputWires to real deps
             if (moduleConfig && 'config' in moduleConfig) {
-              deps = (moduleConfig as any).config;
+              deps = moduleConfig.config;
 
               for (const dep of moduleDepsMap[module as string].inputs) {
                 const depConfig = weakTypeConfig[dep.value.prop];
@@ -407,7 +410,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
 
             isInitializedMap[module] = true;
           }
-          const fullContext: MapToResultTypes<Structure> = context as any;
+          const fullContext = context as MapToResultTypes<Structure>;
 
           const runningSystem: RunningSystemContext<Structure> = {
             ...fullContext,
@@ -481,6 +484,7 @@ const testSystem = createSystem({
   date: new Date(),
   middleware: createArrayWireHub<string>(),
   auth: AuthModule,
+  function: (deps: {test: string}) => deps,
 });
 
 const configuredSystem = testSystem.configure(wire => ({
@@ -490,6 +494,12 @@ const configuredSystem = testSystem.configure(wire => ({
       port: 123,
       middleware: wire.in('middleware').optional.map(m => m ?? []),
     },
+  },
+  function: {
+    config: {
+      test: 'asdf',
+      disabled: true,
+    }
   },
   auth: {
     config: {
