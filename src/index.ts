@@ -17,30 +17,30 @@ function isInputWire(value: unknown): value is InputWire<unknown> {
   return value instanceof InputWire;
 }
 
-const SocketSymbol = Symbol();
+const WireHubSymbol = Symbol();
 
-interface Socket<TAccept, TReturn, TConfig extends unknown[]> {
-  [SocketSymbol]: true;
-  accept(value: TAccept, ...config: TConfig): Socket<TAccept, TReturn, TConfig>;
+interface WireHub<TAccept, TReturn, TConfig extends unknown[]> {
+  [WireHubSymbol]: true;
+  accept(value: TAccept, ...config: TConfig): WireHub<TAccept, TReturn, TConfig>;
   resolve(): TReturn;
 }
 
-function isSocket(value: unknown): value is Socket<unknown, unknown, unknown[]> {
+function isWireHub(value: unknown): value is WireHub<unknown, unknown, unknown[]> {
   if (value === undefined || value === null) {
     return false;
   }
 
-  return typeof value === 'object' && Boolean(value && value[SocketSymbol]);
+  return typeof value === 'object' && Boolean(value && value[WireHubSymbol]);
 }
 
-type ArraySocketConfig = {after: InputWire<unknown>}
-type ArraySocket<T> = Socket<T, Array<T>, [ArraySocketConfig?]>
+type ArrayWireHubConfig = {after: InputWire<unknown>}
+type ArrayWireHub<T> = WireHub<T, Array<T>, [ArrayWireHubConfig?]>
 
-function createArraySocket<T>(entries: ReadonlyArray<[T, ArraySocketConfig?]> = []): ArraySocket<T> {
+function createArrayWireHub<T>(entries: ReadonlyArray<[T, ArrayWireHubConfig?]> = []): ArrayWireHub<T> {
   return {
-    [SocketSymbol]: true,
-    accept(value: T, config?: ArraySocketConfig) {
-      return createArraySocket([...entries, [value, config]]);
+    [WireHubSymbol]: true,
+    accept(value: T, config?: ArrayWireHubConfig) {
+      return createArrayWireHub([...entries, [value, config]]);
     },
     resolve() {
       return entries.map(([value]) => value);
@@ -155,19 +155,19 @@ interface ConfiguredSystem<Structure> extends Module<RunningSystemContext<Struct
 };
 
 type OnlySocketKeys<Structure> = {
-  [K in keyof Structure]: Structure[K] extends Socket<unknown, unknown, unknown[]>
+  [K in keyof Structure]: Structure[K] extends WireHub<unknown, unknown, unknown[]>
     ? K
     : never;
 }[keyof Structure];
 
 type SocketTypes<Structure> = {
-  [K in keyof Structure]: Structure[K] extends Socket<infer V, infer R, infer Config> ? {value: V; return: R; config: Config} : never
+  [K in keyof Structure]: Structure[K] extends WireHub<infer V, infer R, infer Config> ? {value: V; return: R; config: Config} : never
 }
 
 type GetSockets<Structure> = SocketTypes<Pick<Structure, OnlySocketKeys<Structure>>>
 
 type MapToResultTypes<Structure> = {
-  [K in keyof Structure]: Structure[K] extends Socket<unknown, infer Return, unknown[]> ? Return :
+  [K in keyof Structure]: Structure[K] extends WireHub<unknown, infer Return, unknown[]> ? Return :
     Structure[K] extends (...config: unknown[]) => infer T ? T :
     Structure[K] extends Module<infer T, unknown, unknown> ? T : Structure[K]
 }
@@ -217,11 +217,11 @@ function findDeep<T, TSearch>(obj: T, predicate: (value: unknown) => value is TS
   return [];
 }
 
-function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isSocket: boolean, inputs: FindDeepResult<InputWire<unknown>>, outputs?: {[key: string]: OutputWire<unknown, unknown[]>}}]>): Array<[string, string]> {
+function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isWireHub: boolean, inputs: FindDeepResult<InputWire<unknown>>, outputs?: {[key: string]: OutputWire<unknown, unknown[]>}}]>): Array<[string, string]> {
   const edges: Array<[string, string]> = [];
-  definitions.forEach(([moduleName, {inputs, outputs, isSocket}]) => {
-    if (isSocket) {
-      edges.push([`${moduleName}_start_RESERVED`, moduleName]);
+  definitions.forEach(([moduleName, {inputs, outputs, isWireHub}]) => {
+    if (isWireHub) {
+      edges.push([`${moduleName}_empty_init_RESERVED`, moduleName]);
     }
 
     inputs.forEach(dep => edges.push([dep.value.prop, moduleName]));
@@ -231,12 +231,12 @@ function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isS
         const sinkRef = outputs[prop];
         const sinkProp = sinkRef.prop;
 
-        // Socket is going to be initialized at '${sinkProp}_start_RESERVED'.
+        // WireHub is going to be initialized at '${sinkProp}_empty_init_RESERVED'.
         // To put a value in a sink module will depend on its start point node.
         // To make sure all sink values are initialized before the sink is used,
         // module will be a dependency of sink "end" graph node. if you depend on sink "end",
         // you can be sure that all things that all SinkRefs for that sink are resolved
-        edges.push([`${sinkProp}_start_RESERVED`, moduleName])
+        edges.push([`${sinkProp}_empty_init_RESERVED`, moduleName])
         edges.push([moduleName, sinkProp]);
       });
     }
@@ -256,8 +256,8 @@ function fromPairs<U>(input: ReadonlyArray<readonly [string, U]>): {[key: string
 
 function getAllNodes<Structure>(structure: Structure): readonly string[] {
   return flatten(Object.getOwnPropertyNames(structure).map(key => {
-    if (isSocket(structure[key])) {
-      return [`${key}_start_RESERVED`, key];
+    if (isWireHub(structure[key])) {
+      return [`${key}_empty_init_RESERVED`, key];
     } else {
       return [key];
     }
@@ -306,12 +306,12 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
           const moduleDepsPairs: (readonly [
             string,
             {
-              isSocket: boolean,
+              isWireHub: boolean,
               inputs: FindDeepResult<InputWire<unknown>>,
               outputs?: {[key: string]: OutputWire<unknown, unknown[]>},
             }
           ])[] = Object.getOwnPropertyNames(config).map((moduleName) => [moduleName, {
-            isSocket: isSocket(structure[moduleName]),
+            isWireHub: isWireHub(structure[moduleName]),
             inputs: findDeep(config[moduleName]?.config, isInputWire),
             outputs: config[moduleName]?.inject,
           }] as const);
@@ -330,7 +330,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
           const context: Partial<MapToResultTypes<Structure>> = {};
 
           for (const moduleName of sortedModules) {
-            const module = moduleName.replace(/_start_RESERVED$/, '');
+            const module = moduleName.replace(/_empty_init_RESERVED$/, '');
             // If context already has a module, that means that it's a sink
             if (context[module]) {
               continue;
@@ -354,7 +354,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
                 }
                 const depValue = dep.value.mapper(context[dep.value.prop]);
 
-                if (isSocket(depValue)) {
+                if (isWireHub(depValue)) {
                   deps = deepSet(deps, dep.path, depValue.resolve());
                 } else {
                   deps = deepSet(deps, dep.path, depValue);
@@ -363,7 +363,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
             }
 
             // Module init
-            if (isSocket(currentModule)) {
+            if (isWireHub(currentModule)) {
               context[module] = currentModule;
             } else if (typeof currentModule === 'function') {
               context[module] = currentModule(deps);
@@ -391,13 +391,13 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
                   const sinkConfig = weakTypeConfig[sinkRef.prop];
 
                   if (sinkConfig?.disabled) {
-                    throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}", but Socket "${sinkRef.prop}" is disabled`)
+                    throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}", but WireHub "${sinkRef.prop}" is disabled`)
                   }
 
-                  if (isSocket(maybeSink)) {
+                  if (isWireHub(maybeSink)) {
                     context[sinkRef.prop] = maybeSink.accept(sinkRef.mapper(injects[sinkRef.prop]), ...sinkRef.config);
                   } else {
-                    throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}", but "${sinkRef.prop}" is not a Socket"`)
+                    throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}", but "${sinkRef.prop}" is not a WireHub"`)
                   }
                 })
               }
@@ -479,7 +479,7 @@ const testSystem = createSystem({
   constant: "asdf",
   env: EnvModule,
   date: new Date(),
-  middleware: createArraySocket<string>(),
+  middleware: createArrayWireHub<string>(),
   auth: AuthModule,
 });
 
@@ -491,12 +491,6 @@ const configuredSystem = testSystem.configure(wire => ({
       middleware: wire.in('middleware').optional.map(m => m ?? []),
     },
   },
-  subSystem: {
-    disabled: true,
-  },
-  middleware: {
-    disabled: true,
-  },
   auth: {
     config: {
       secret: wire.in('subSystem').optional.map(s => s?.test ?? 'asdf'),
@@ -504,7 +498,6 @@ const configuredSystem = testSystem.configure(wire => ({
     inject: {
       middleware: wire.out('middleware').map(s => s.toUpperCase())
     },
-    disabled: true,
   }
 }));
 
