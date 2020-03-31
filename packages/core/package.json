@@ -1,5 +1,5 @@
 {
-  "name": "ts-module-system",
+  "name": "@ts-module-system/core",
   "version": "1.0.0",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
