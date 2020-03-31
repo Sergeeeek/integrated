@@ -188,15 +188,15 @@ function flatten<T>(array: ReadonlyArray<ReadonlyArray<T>>): ReadonlyArray<T> {
   return array.reduce((acc, next) => acc.concat(next), []);
 }
 
-type FindDeepResult<Search> = ReadonlyArray<{path: (string | symbol)[]; value: Search}>;
+type FilterDeepResult<Search> = ReadonlyArray<{path: (string | symbol)[]; value: Search}>;
 
-function findDeep<T, TSearch>(obj: T, predicate: (value: unknown) => value is TSearch, path: (string | symbol)[] = []): FindDeepResult<TSearch> {
+function filterDeep<T, TSearch>(obj: T, predicate: (value: unknown) => value is TSearch, path: (string | symbol)[] = []): FilterDeepResult<TSearch> {
   if (predicate(obj)) {
     return [{path: path, value: obj}];
   }
 
   if (Array.isArray(obj)) {
-    return flatten(obj.map((elem, index) => findDeep(elem, predicate, [...path, index.toString()])));
+    return flatten(obj.map((elem, index) => filterDeep(elem, predicate, [...path, index.toString()])));
   }
 
   if (isPrimitive(obj)) {
@@ -205,8 +205,8 @@ function findDeep<T, TSearch>(obj: T, predicate: (value: unknown) => value is TS
 
   if (obj instanceof Object) {
     return flatten(
-      Object.getOwnPropertyNames(obj)
-        .map(prop => findDeep(obj[prop], predicate, [...path, prop]))
+      [...Object.getOwnPropertyNames(obj), ...Object.getOwnPropertySymbols(obj)]
+        .map(prop => filterDeep(obj[prop], predicate, [...path, prop]))
     );
   }
 
@@ -214,7 +214,7 @@ function findDeep<T, TSearch>(obj: T, predicate: (value: unknown) => value is TS
   return [];
 }
 
-function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isWireHub: boolean, inputs: FindDeepResult<InputWire<unknown>>, outputs?: {[key: string]: OutputWire<unknown, unknown[]>}}]>): Array<[string, string]> {
+function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isWireHub: boolean, inputs: FilterDeepResult<InputWire<unknown>>, outputs?: {[key: string]: OutputWire<unknown, unknown[]>}}]>): Array<[string, string]> {
   const edges: Array<[string, string]> = [];
   definitions.forEach(([moduleName, {inputs, outputs, isWireHub}]) => {
     if (isWireHub) {
@@ -310,12 +310,12 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
             string,
             {
               isWireHub: boolean,
-              inputs: FindDeepResult<InputWire<unknown>>,
+              inputs: FilterDeepResult<InputWire<unknown>>,
               outputs?: {[key: string]: OutputWire<unknown, unknown[]>},
             }
           ])[] = Object.getOwnPropertyNames(config).map((moduleName) => [moduleName, {
             isWireHub: isWireHub(structure[moduleName]),
-            inputs: findDeep(config[moduleName]?.config, isInputWire),
+            inputs: filterDeep(config[moduleName]?.config, isInputWire),
             outputs: config[moduleName]?.inject,
           }] as const);
           const moduleDepsMap = fromPairs(moduleDepsPairs);
@@ -326,10 +326,6 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
           const sortedModules: string[] = toposort.array(nodes, dependencyGraph);
           console.log({sortedModules});
 
-          const isInitializedMap= fromPairs(
-            Object.getOwnPropertyNames(structure)
-              .map(module => [module, false])
-            );
           const context: Partial<MapToResultTypes<Structure>> = {};
 
           for (const moduleName of sortedModules) {
@@ -375,7 +371,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
               context[module] = instance;
 
               if (currentModule.inject) {
-                const injects: any = currentModule.inject(instance, deps);
+                const injects = currentModule.inject(instance, deps);
                 const injectConfig = moduleDepsMap[module].outputs;
 
                 const allInjects = new Set([
@@ -384,7 +380,7 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
                 );
 
                 allInjects.forEach(key => {
-                  if (!(key in injects && injectConfig && key in injectConfig)) {
+                  if (!(injects instanceof Object && key in injects && injectConfig && key in injectConfig)) {
                     console.error('Provided by module: ', injects);
                     console.error('Found in config', injectConfig);
                     throw new Error(`Tried to inject a value from "${module}", but either the value was not provided or inject destination was not configured.\nSee error above for more details.`);
@@ -407,8 +403,6 @@ function createSystem<Structure>(structure: Structure): System<Structure> {
             } else {
               context[module] = currentModule as unknown;
             }
-
-            isInitializedMap[module] = true;
           }
           const fullContext = context as MapToResultTypes<Structure>;
 
