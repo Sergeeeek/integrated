@@ -36,7 +36,7 @@ function isWireHub(value: unknown): value is WireHub<unknown, unknown, unknown[]
 type ArrayWireHubConfig = {after: InputWire<unknown>}
 type ArrayWireHub<T> = WireHub<T, Array<T>, [ArrayWireHubConfig?]>
 
-function createArrayWireHub<T>(entries: ReadonlyArray<[T, ArrayWireHubConfig?]> = []): ArrayWireHub<T> {
+export function createArrayWireHub<T>(entries: ReadonlyArray<[T, ArrayWireHubConfig?]> = []): ArrayWireHub<T> {
   return {
     [WireHubSymbol]: true,
     accept(value: T, config?: ArrayWireHubConfig) {
@@ -87,7 +87,7 @@ interface Module<T, Deps, Injects> extends ModuleDefinition<T, Deps, Injects> {
   [ModuleSymbol]: true;
 }
 
-function createModule<T, Deps = never, Injects = never>(definition: ModuleDefinition<T, Deps, Injects>): Module<T, Deps, Injects> {
+export function createModule<T, Deps = never, Injects = never>(definition: ModuleDefinition<T, Deps, Injects>): Module<T, Deps, Injects> {
   return {
     [ModuleSymbol]: true,
     ...definition,
@@ -261,7 +261,7 @@ function getAllNodes<Structure>(structure: Structure): readonly string[] {
   }));
 }
 
-function createSystem<Structure>(structure: Structure): System<Structure> {
+export function createSystem<Structure>(structure: Structure): System<Structure> {
   return {
     configure(closure) {
       const wireFactory: WireFactory<Structure> = {

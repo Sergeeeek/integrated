@@ -1,8 +1,7 @@
 {
   "compilerOptions": {
     "target": "ES5",
-    "lib": ["ES6", "ES2015.Symbol", "DOM"],
-    "outDir": "dist",
+    "lib": ["ES5", "ES6", "ES2015.Symbol", "DOM"],
     "declaration": true,
     "sourceMap": true,
     "declarationMap": true,
