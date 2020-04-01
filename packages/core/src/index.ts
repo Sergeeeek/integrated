@@ -295,7 +295,7 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
           const reverseSortedModules = instance[SystemMetaSymbol].sortedModules.reverse();
 
           for (const moduleName of reverseSortedModules) {
-            if (weakTypeConfig[moduleName]?.disabled) {
+            if (weakTypeConfig[moduleName] && weakTypeConfig[moduleName].disabled) {
               continue;
             }
             if (isModule(structure[moduleName])) {
@@ -315,8 +315,8 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
             }
           ])[] = Object.getOwnPropertyNames(config).map((moduleName) => [moduleName, {
             isWireHub: isWireHub(structure[moduleName]),
-            inputs: filterDeep(config[moduleName]?.config, isInputWire),
-            outputs: config[moduleName]?.inject,
+            inputs: filterDeep(config[moduleName] && config[moduleName].config, isInputWire),
+            outputs: config[moduleName] && config[moduleName].inject,
           }] as const);
           const moduleDepsMap = fromPairs(moduleDepsPairs);
 
@@ -336,7 +336,7 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
             }
             const currentModule = structure[module];
             const moduleConfig = weakTypeConfig[module];
-            if (moduleConfig?.disabled) {
+            if (moduleConfig && moduleConfig.disabled) {
               continue;
             }
             let deps: unknown;
@@ -348,7 +348,7 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
               for (const dep of moduleDepsMap[module as string].inputs) {
                 const depConfig = weakTypeConfig[dep.value.prop];
 
-                if (depConfig?.disabled && !dep.value.isOptional) {
+                if (depConfig && depConfig.disabled && !dep.value.isOptional) {
                   throw new Error(`Module "${module}" has a dependency "${dep.value.prop}" at config path "${[module, 'config', ...dep.path].join('.')}", but that dependency is disabled through config and InputWire is not optional.\nPlease remove the disabled flag from "${module}" or make the dependency optional.`);
                 }
                 const depValue = dep.value.mapper(context[dep.value.prop]);
@@ -389,7 +389,7 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
                   const maybeSink = context[sinkRef.prop];
                   const sinkConfig = weakTypeConfig[sinkRef.prop];
 
-                  if (sinkConfig?.disabled) {
+                  if (sinkConfig && sinkConfig.disabled) {
                     throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}", but WireHub "${sinkRef.prop}" is disabled`)
                   }
 
@@ -486,7 +486,7 @@ const configuredSystem = testSystem.configure(wire => ({
     config: {
       host: wire.in('env').map(env => env.get('SERVER_HOST')),
       port: 123,
-      middleware: wire.in('middleware').optional.map(m => m ?? []),
+      middleware: wire.in('middleware').optional.map(m => m || []),
     },
   },
   function: {
@@ -497,7 +497,7 @@ const configuredSystem = testSystem.configure(wire => ({
   },
   auth: {
     config: {
-      secret: wire.in('subSystem').optional.map(s => s?.test ?? 'asdf'),
+      secret: wire.in('subSystem').optional.map(s => s && s.test || 'asdf'),
     },
     inject: {
       middleware: wire.out('middleware').map(s => s.toUpperCase())

@@ -2,9 +2,6 @@
   "compilerOptions": {
     "target": "ES5",
     "lib": ["ES5", "ES6", "ES2015.Symbol", "DOM"],
-    "declaration": true,
-    "sourceMap": true,
-    "declarationMap": true,
     "downlevelIteration": true,
     "strictNullChecks": true
   },

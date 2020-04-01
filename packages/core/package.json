@@ -1,27 +1,26 @@
 {
   "name": "@ts-module-system/core",
   "version": "1.0.0",
-  "main": "dist/cjs/index.js",
-  "types": "dist/cjs/index.d.ts",
-  "module": "dist/es/index.js",
+  "source": "src/index.ts",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "module": "dist/index.module.js",
+  "unpkg": "dist/index.umd.js",
   "repository": "git@github.com:Sergeeeek/ts-module-system.git",
   "author": "Sergey Poznyak <Sergeeeekg@gmail.com>",
   "license": "MIT",
   "private": true,
   "devDependencies": {
-    "@rollup/plugin-typescript": "3.1.1",
     "@typescript-eslint/eslint-plugin": "^2.24.0",
     "@typescript-eslint/parser": "^2.24.0",
     "eslint": "^6.8.0",
-    "rollup": "^2.3.1",
+    "microbundle": "^0.11.0",
     "tslib": "^1.11.1",
-    "typescript": "^3.8.3"
-  },
-  "dependencies": {
+    "typescript": "^3.8.3",
     "toposort": "^2.0.2"
   },
   "scripts": {
-    "dev": "tsc -p . --watch",
-    "build": "rollup -c"
+    "dev": "microbundle --watch",
+    "build": "microbundle"
   }
 }
