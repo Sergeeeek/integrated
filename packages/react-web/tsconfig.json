@@ -1,0 +1,10 @@
+{
+  "compilerOptions": {
+    "target": "ES5",
+    "lib": ["ES5", "ES6", "ES2015.Symbol", "DOM"],
+    "downlevelIteration": true,
+    "strictNullChecks": true,
+    "jsx": "react"
+  },
+  "typeAcquisition": {"enable": true}
+}

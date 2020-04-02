@@ -77,13 +77,13 @@ type GetDeps<T> = T extends (config: infer V) => unknown
 
 const ModuleSymbol = Symbol();
 
-interface ModuleDefinition<T, Deps, Injects> {
+export interface ModuleDefinition<T, Deps, Injects> {
   start(deps: Deps): T;
   stop?: (instance: T) => void,
   inject?: (instance: T, deps: Deps) => Injects;
 }
 
-interface Module<T, Deps, Injects> extends ModuleDefinition<T, Deps, Injects> {
+export interface Module<T, Deps, Injects> extends ModuleDefinition<T, Deps, Injects> {
   [ModuleSymbol]: true;
 }
 
@@ -140,11 +140,11 @@ type SystemMeta<Structure> = {
   readonly sortedModules: string[],
   readonly creator: ConfiguredSystem<Structure>
 };
-type RunningSystemContext<Structure> = MapToResultTypes<Structure> & {
+export type RunningSystemContext<Structure> = MapToResultTypes<Structure> & {
   [SystemMetaSymbol]: SystemMeta<Structure>,
 };
 
-interface ConfiguredSystem<Structure> extends Module<RunningSystemContext<Structure>, never, never> {
+export interface ConfiguredSystem<Structure> extends Module<RunningSystemContext<Structure>, never, never> {
   readonly definition: Structure;
   readonly config: SystemConfig<Structure>;
   start(): RunningSystemContext<Structure>;
@@ -174,7 +174,7 @@ type WireFactory<Structure> = {
   out<Key extends keyof GetSockets<Structure>>(key: Key, ...config: GetSockets<Structure>[Key]['config']): OutputWire<GetSockets<Structure>[Key]['value'], GetSockets<Structure>[Key]['config']>;
 };
 
-type System<Structure> = {
+export type System<Structure> = {
   configure(
     closure: (wire: WireFactory<Structure>) => SystemConfig<Structure>
   ): ConfiguredSystem<Structure>;
