@@ -3,7 +3,7 @@ import * as ReactDOM from 'react-dom';
 import {createModule} from '@ts-module-system/core';
 
 export interface ReactConfig {
-  App: React.ComponentType<{}>,
+  App: React.JSXElementConstructor<{}>,
   selector: string
 }
 

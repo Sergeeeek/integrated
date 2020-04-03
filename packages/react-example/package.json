@@ -1,0 +1,23 @@
+{
+  "name": "@ts-module-system/react-example",
+  "version": "1.0.0",
+  "main": "index.js",
+  "license": "MIT",
+  "private": true,
+  "devDependencies": {
+    "@types/react": "^16.9.32",
+    "parcel-bundler": "^1.12.4",
+    "typescript": "^3.8.3"
+  },
+  "dependencies": {
+    "@ts-module-system/core": "1.0.0",
+    "@ts-module-system/react-middleware": "1.0.0",
+    "@ts-module-system/react-web": "1.0.0",
+    "react": "^16.13.1",
+    "react-dom": "^16.13.1"
+  },
+  "scripts": {
+    "serve": "parcel src/index.html",
+    "build": "parcel build src/index.html"
+  }
+}

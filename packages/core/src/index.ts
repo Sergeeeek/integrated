@@ -324,7 +324,6 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
           const dependencyGraph = createDependencyGraph(moduleDepsPairs);
 
           const sortedModules: string[] = toposort.array(nodes, dependencyGraph);
-          console.log({sortedModules});
 
           const context: Partial<MapToResultTypes<Structure>> = {};
 
@@ -422,88 +421,3 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
     }
   }
 }
-
-const ServerModule = createModule({
-  start(deps: {host: string, port: number, middleware: readonly string[]}): void {
-    console.log('server create', {middleware: deps.middleware});
-
-    return undefined;
-  },
-  stop() {
-    console.log('destroying server');
-  },
-});
-interface AuthInstance {
-  auth(creds: {user: string, pass: string}): Promise<{authToken: string}>
-}
-
-const AuthModule = createModule<AuthInstance, {secret: string}, {middleware: string}>({
-  start({secret}) {
-    return {
-      auth({user, pass}: {user: string, pass: string}): Promise<{authToken: string}> {
-        return Promise.resolve({authToken: 'asdf'});
-      }
-    };
-  },
-  stop(instance) {
-    console.log('destroying auth');
-  },
-  inject(_instance, deps) {
-    return {
-      middleware: deps.secret,
-    };
-  }
-});
-
-const EnvModule = () => {
-  return {
-    get(env: string): string {
-      return env;
-    }
-  };
-};
-
-const subSystem = createSystem({
-  test: 'I\'m a subsystem',
-}).configure(() => {
-  return {};
-});
-
-
-const testSystem = createSystem({
-  subSystem,
-  server: ServerModule,
-  constant: "asdf",
-  env: EnvModule,
-  date: new Date(),
-  middleware: createArrayWireHub<string>(),
-  auth: AuthModule,
-  function: (deps: {test: string}) => deps,
-});
-
-const configuredSystem = testSystem.configure(wire => ({
-  server: {
-    config: {
-      host: wire.in('env').map(env => env.get('SERVER_HOST')),
-      port: 123,
-      middleware: wire.in('middleware').optional.map(m => m || []),
-    },
-  },
-  function: {
-    config: {
-      test: 'asdf',
-      disabled: true,
-    }
-  },
-  auth: {
-    config: {
-      secret: wire.in('subSystem').optional.map(s => s && s.test || 'asdf'),
-    },
-    inject: {
-      middleware: wire.out('middleware').map(s => s.toUpperCase())
-    },
-  }
-}));
-
-const runningSystem = configuredSystem.start();
-configuredSystem.stop(runningSystem);
