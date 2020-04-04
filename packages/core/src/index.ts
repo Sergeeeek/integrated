@@ -79,8 +79,8 @@ const ModuleSymbol = Symbol();
 
 export interface ModuleDefinition<T, Deps, Injects> {
   start(deps: Deps): T;
-  stop?: (instance: T) => void,
-  inject?: (instance: T, deps: Deps) => Injects;
+  stop?(instance: T): void;
+  inject?(instance: T, deps: Deps): Injects;
 }
 
 export interface Module<T, Deps, Injects> extends ModuleDefinition<T, Deps, Injects> {
