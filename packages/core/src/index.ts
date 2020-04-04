@@ -65,7 +65,7 @@ function isOutputWire(value: unknown): value is OutputWire<unknown, unknown[]> {
 
 type RecursiveRef<Deps> = Deps extends never ? never : {
   [K in keyof Deps]:
-    | RecursiveRef<Deps[K]>
+    | Deps[K]
     | InputWire<Deps[K] | RecursiveRef<Deps[K]>>;
 };
 
@@ -110,10 +110,12 @@ type GetInjects<T> = T extends Module<unknown, unknown, infer Injects>
 
 
 type RequiredKeys<T> = Exclude<keyof T, {
-  [K in keyof T]: T[K] extends {} ? T[K] extends never ? K : never : K;
+  [K in keyof T]: undefined extends T[K] ? K : [T[K]] extends [never] ? K : never;
 }[keyof T]>;
 
-type RemoveNeverAndEmpty<T> = Pick<T, RequiredKeys<T>>
+type RemoveNever<T> = Omit<T, {
+  [K in keyof T]: [T[K]] extends [never] ? K : never
+}[keyof T]>
 
 type RequiredNestedKeys<T> = RequiredKeys<{
   [K in keyof T]: RequiredKeys<T[K]>
@@ -125,15 +127,13 @@ type PropagateOptional<T> = {
   [K in Exclude<keyof T, RequiredNestedKeys<T>>]?: T[K]
 }
 
-type SystemConfig<Structure> = PropagateOptional<
-  {
-    [K in keyof Structure]: RemoveNeverAndEmpty<{
-      disabled?: boolean,
-      config: GetDeps<Structure[K]>,
-      inject: GetInjects<Structure[K]>,
+type SystemConfig<Structure> = PropagateOptional<{
+    [K in keyof Structure]: RemoveNever<{
+        disabled?: boolean,
+        config: GetDeps<Structure[K]>,
+        inject: GetInjects<Structure[K]>,
     }>
-  }
->;
+  }>;
 
 const SystemMetaSymbol = Symbol();
 type SystemMeta<Structure> = {
