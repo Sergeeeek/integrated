@@ -9,7 +9,7 @@ document.addEventListener('DOMContentLoaded', () => {
   const system = createSystem({
     root: ReactMiddlewareModule,
     react: ReactModule,
-    middleware: createArrayWireHub<React.ComponentType<{children?: JSX.Element}>>(),
+    middleware: createArrayWireHub<React.ComponentType<{children?: React.ReactNode}>>(),
     timeoutAlert: TimeoutAlertModule,
   });
 
@@ -24,6 +24,15 @@ document.addEventListener('DOMContentLoaded', () => {
       config: {
         child: <div>hello</div>,
         middleware: wire.in('middleware')
+      }
+    },
+    timeoutAlert: {
+      config: {
+        alert: 'Hello',
+        timeout: 5000,
+      },
+      inject: {
+        middleware: wire.out('middleware')
       }
     }
   })).start();

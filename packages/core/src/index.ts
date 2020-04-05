@@ -78,9 +78,11 @@ type GetDeps<T> = T extends (config: infer V) => unknown
 const ModuleSymbol = Symbol();
 
 export interface ModuleDefinition<T, Deps, Injects> {
-  start(deps: Deps): T;
-  stop?(instance: T): void;
-  inject?(instance: T, deps: Deps): Injects;
+  start(deps: Deps): {
+    instance: T,
+    stop?(): void,
+    inject?(): Injects,
+  };
 }
 
 export interface Module<T, Deps, Injects> extends ModuleDefinition<T, Deps, Injects> {
@@ -135,20 +137,13 @@ type SystemConfig<Structure> = PropagateOptional<{
     }>
   }>;
 
-const SystemMetaSymbol = Symbol();
-type SystemMeta<Structure> = {
-  readonly sortedModules: string[],
-  readonly creator: ConfiguredSystem<Structure>
-};
-export type RunningSystemContext<Structure> = MapToResultTypes<Structure> & {
-  [SystemMetaSymbol]: SystemMeta<Structure>,
-};
-
-export interface ConfiguredSystem<Structure> extends Module<RunningSystemContext<Structure>, never, never> {
+export interface ConfiguredSystem<Structure> extends Module<MapToResultTypes<Structure>, never, never> {
   readonly definition: Structure;
   readonly config: SystemConfig<Structure>;
-  start(): RunningSystemContext<Structure>;
-  stop(instance: RunningSystemContext<Structure>): void,
+  start(): {
+    instance: MapToResultTypes<Structure>,
+    stop(): void,
+  };
 };
 
 type OnlySocketKeys<Structure> = {
@@ -288,23 +283,6 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
         [ModuleSymbol]: true as const,
         definition: structure,
         config,
-        stop(instance: RunningSystemContext<Structure>) {
-          if (instance[SystemMetaSymbol].creator !== configuredSystem) {
-            throw new Error('Tried to stop a running system using a ConfiguredSystem instance that did not start it');
-          }
-          const reverseSortedModules = instance[SystemMetaSymbol].sortedModules.reverse();
-
-          for (const moduleName of reverseSortedModules) {
-            if (weakTypeConfig[moduleName] && weakTypeConfig[moduleName].disabled) {
-              continue;
-            }
-            if (isModule(structure[moduleName])) {
-              if (structure[moduleName].stop) {
-                structure[moduleName].stop(instance[moduleName]);
-              }
-            }
-          }
-        },
         start() {
           const moduleDepsPairs: (readonly [
             string,
@@ -326,6 +304,7 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
           const sortedModules: string[] = toposort.array(nodes, dependencyGraph);
 
           const context: Partial<MapToResultTypes<Structure>> = {};
+          const initializedModules: {[key: string]: {stop?(): void, inject?(): unknown}} = {};
 
           for (const moduleName of sortedModules) {
             const module = moduleName.replace(/_empty_init_RESERVED$/, '');
@@ -366,11 +345,12 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
             } else if (typeof currentModule === 'function') {
               context[module] = currentModule(deps);
             } else if (isModule(currentModule)) {
-              const instance = currentModule.start(deps);
-              context[module] = instance;
+              const initializedModule = currentModule.start(deps);
+              initializedModules[module] = initializedModules;
+              context[module] = initializedModule.instance;
 
-              if (currentModule.inject) {
-                const injects = currentModule.inject(instance, deps);
+              if (initializedModule.inject) {
+                const injects = initializedModule.inject();
                 const injectConfig = moduleDepsMap[module].outputs;
 
                 const allInjects = new Set([
@@ -405,15 +385,23 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
           }
           const fullContext = context as MapToResultTypes<Structure>;
 
-          const runningSystem: RunningSystemContext<Structure> = {
-            ...fullContext,
-            [SystemMetaSymbol]: {
-              creator: configuredSystem,
-              sortedModules,
+          return {
+            instance: fullContext,
+            stop() {
+              const reverseSortedModules = sortedModules.reverse();
+
+              for (const moduleName of reverseSortedModules) {
+                if (weakTypeConfig[moduleName] && weakTypeConfig[moduleName].disabled) {
+                  continue;
+                }
+                if (isModule(structure[moduleName])) {
+                  if (initializedModules[moduleName] && initializedModules[moduleName].stop) {
+                    initializedModules[moduleName].stop!();
+                  }
+                }
+              }
             },
           };
-
-          return runningSystem;
         }
       };
 

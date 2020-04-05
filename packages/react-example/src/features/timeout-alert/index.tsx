@@ -2,8 +2,8 @@ import * as React from 'react';
 import {createModule} from '@ts-module-system/core';
 
 export const TimeoutAlertModule = createModule({
-  start({timeout, alert}: {timeout: number, alert: string}): React.ComponentType<{children?: JSX.Element}> {
-    return ({children}: {children?: JSX.Element}) => {
+  start({timeout, alert}: {timeout: number, alert: string}) {
+    const TimeoutAlertMiddleware = ({children}: {children?: React.ReactNode}) => {
       React.useEffect(() => {
         const timeoutHandle = setTimeout(() => {
           window.alert(alert)
@@ -14,12 +14,15 @@ export const TimeoutAlertModule = createModule({
         }, timeout);
       }, []);
 
-      return children;
+      return <>{children}</>;
+    };
+    return {
+      instance: TimeoutAlertMiddleware,
+      inject() {
+        return {
+          middleware: TimeoutAlertMiddleware,
+        }
+      }
     }
   },
-  inject(instance) {
-    return {
-      middleware: instance,
-    }
-  }
 });

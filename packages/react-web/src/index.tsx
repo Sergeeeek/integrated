@@ -11,8 +11,8 @@ export interface ReactInstance {
   container: Element
 }
 
-export default createModule<ReactInstance, ReactConfig, never>({
-  start({selector, App}: ReactConfig): {container: Element} {
+export default createModule({
+  start({selector, App}: ReactConfig) {
     const container = document.querySelector(selector);
 
     if (!container) {
@@ -22,10 +22,10 @@ export default createModule<ReactInstance, ReactConfig, never>({
     ReactDOM.render(<App />, container);
 
     return {
-      container,
+      instance: container,
+      stop() {
+        ReactDOM.unmountComponentAtNode(container);
+      }
     };
   },
-  stop({container}) {
-    ReactDOM.unmountComponentAtNode(container);
-  }
 });
