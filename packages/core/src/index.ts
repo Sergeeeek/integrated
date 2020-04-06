@@ -48,14 +48,15 @@ export function createArrayWireHub<T>(entries: ReadonlyArray<[T, ArrayWireHubCon
   };
 }
 
-class OutputWire<T, Config extends unknown[]> {
+class OutputWire<T, Config extends unknown[]>  {
+  _contravarianceHack?(arg: T): void;
   readonly config: Config;
   constructor(public readonly prop: string, public readonly mapper: Function = (id: T) => id, ...config: Config) {
     this.config = config;
   }
 
-  map<U>(mapper: (val: T) => U): OutputWire<U, Config> {
-    return new OutputWire(this.prop, (val: T) => mapper(this.mapper(val)), ...this.config);
+  map<U, V extends T = T>(mapper: (val: V) => U): OutputWire<U, Config> {
+    return new OutputWire(this.prop, (val: V) => mapper(this.mapper(val)), ...this.config);
   }
 }
 
