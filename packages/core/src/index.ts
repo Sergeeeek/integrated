@@ -1,5 +1,5 @@
 import * as toposort from 'toposort';
-import {deepSet} from './util';
+import {deepSet, flatten} from './util';
 
 class InputWire<T> {
   constructor(public readonly prop: string, public readonly isOptional: boolean = false, public readonly mapper: Function = (id: T) => id) {}
@@ -21,7 +21,7 @@ const WireHubSymbol = Symbol();
 
 interface WireHub<TAccept, TReturn, TConfig extends unknown[]> {
   [WireHubSymbol]: true;
-  accept(value: TAccept, ...config: TConfig): WireHub<TAccept, TReturn, TConfig>;
+  accept(from: string, value: TAccept, ...config: TConfig): WireHub<TAccept, TReturn, TConfig>;
   resolve(): TReturn;
 }
 
@@ -33,17 +33,38 @@ function isWireHub(value: unknown): value is WireHub<unknown, unknown, unknown[]
   return typeof value === 'object' && Boolean(value && value[WireHubSymbol]);
 }
 
-type ArrayWireHubConfig = {after: InputWire<unknown>}
+type ArrayWireHubConfig = {after?: InputWire<unknown>, before?: InputWire<unknown>}
 type ArrayWireHub<T> = WireHub<T, Array<T>, [ArrayWireHubConfig?]>
 
-export function createArrayWireHub<T>(entries: ReadonlyArray<[T, ArrayWireHubConfig?]> = []): ArrayWireHub<T> {
+export function createArrayWireHub<T>(entries: {[key: string]: {value: T, config?: ArrayWireHubConfig}} = {}): ArrayWireHub<T> {
   return {
     [WireHubSymbol]: true,
-    accept(value: T, config?: ArrayWireHubConfig) {
-      return createArrayWireHub([...entries, [value, config]]);
+    accept(from: string, value: T, config?: ArrayWireHubConfig) {
+      return createArrayWireHub({
+        ...entries,
+        [from]: {
+          value,
+          config
+        }
+      });
     },
     resolve() {
-      return entries.map(([value]) => value);
+      const nodes = Object.getOwnPropertyNames(entries);
+      const edges = flatten(nodes.map(node => {
+        const {config} = entries[node];
+        if (!config) {
+          return [];
+        }
+
+        return [
+          config.before ? [node, config.before.prop] : null,
+          config.after ? [config.after.prop, node] : null,
+        ].filter(v => v !== null) as [string, string][];
+      }));
+
+      const sortedEntries = toposort.array(nodes, edges);
+
+      return sortedEntries.map(entry => entries[entry].value);
     }
   };
 }
@@ -178,10 +199,6 @@ export type System<Structure> = {
 
 function isPrimitive(v: unknown): v is (string | number | boolean | undefined | null | symbol | Function) {
   return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'symbol' || typeof v === 'function' || v === undefined || v === null;
-}
-
-function flatten<T>(array: ReadonlyArray<ReadonlyArray<T>>): ReadonlyArray<T> {
-  return array.reduce((acc, next) => acc.concat(next), []);
 }
 
 type FilterDeepResult<Search> = ReadonlyArray<{path: (string | symbol)[]; value: Search}>;
@@ -374,7 +391,7 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
                   }
 
                   if (isWireHub(maybeSink)) {
-                    context[sinkRef.prop] = maybeSink.accept(sinkRef.mapper(injects[sinkRef.prop]), ...sinkRef.config);
+                    context[sinkRef.prop] = maybeSink.accept(module, sinkRef.mapper(injects[sinkRef.prop]), ...sinkRef.config);
                   } else {
                     throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}", but "${sinkRef.prop}" is not a WireHub"`)
                   }

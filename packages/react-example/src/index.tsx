@@ -3,6 +3,7 @@ import * as React from 'react';
 import ReactMiddlewareModule from '@ts-module-system/react-middleware';
 import ReactModule from '@ts-module-system/react-web';
 
+import { SomeProviderModule } from './features/some-provider';
 import { TimeoutAlertModule } from './features/timeout-alert';
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -11,6 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
     react: ReactModule,
     middleware: createArrayWireHub<React.ComponentType<{children?: React.ReactNode}>>(),
     timeoutAlert: TimeoutAlertModule,
+    prov: SomeProviderModule<string>(),
   });
 
   system.configure(wire => ({
@@ -22,7 +24,7 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     root: {
       config: {
-        child: <div>hello</div>,
+        child: <div>App</div>,
         middleware: wire.in('middleware')
       }
     },
@@ -32,7 +34,15 @@ document.addEventListener('DOMContentLoaded', () => {
         timeout: 5000,
       },
       inject: {
-        middleware: wire.out('middleware')
+        middleware: wire.out('middleware', { after: wire.in('prov') })
+      }
+    },
+    prov: {
+      config: {
+        value: 'asdfasdfasdf'
+      },
+      inject: {
+        middleware: wire.out('middleware', {after: wire.in('timeoutAlert')})
       }
     }
   })).start();

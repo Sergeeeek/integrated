@@ -76,3 +76,7 @@ export function deepSet<T, Path extends readonly (string | symbol)[], Val>(obj: 
     }
   }) as any;
 }
+
+export function flatten<T>(array: ReadonlyArray<ReadonlyArray<T>>): ReadonlyArray<T> {
+  return array.reduce((acc, next) => acc.concat(next), []);
+}
