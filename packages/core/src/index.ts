@@ -93,32 +93,45 @@ type RecursiveRef<Deps> = Deps extends never ? never : {
 
 type GetDeps<T> = T extends (config: infer V) => unknown
   ? {} extends V ? never : RecursiveRef<V>
-  : T extends Module<unknown, infer V, unknown>
-  ? RecursiveRef<V>
   : never;
 
 const ModuleSymbol = Symbol();
 
 export interface ModuleDefinition<T, Deps, Injects> {
-  start(deps: Deps): {
-    instance: T,
-    stop?(): void,
-    inject?(): Injects,
-  };
+  (deps: Deps): readonly [T, {stop?(): void, inject?(): Injects}?];
 }
 
-export interface Module<T, Deps, Injects> extends ModuleDefinition<T, Deps, Injects> {
+export interface Module<T, Injects> {
   [ModuleSymbol]: true;
+  instance: T;
+  stop?(): void;
+  inject?(): Injects;
+  withDestructor(destructor: () => void): Module<T, Injects>;
+  withInjects<U>(inject: () => U): Module<T, U>;
 }
 
-export function createModule<T, Deps = never, Injects = never>(definition: ModuleDefinition<T, Deps, Injects>): Module<T, Deps, Injects> {
-  return {
-    [ModuleSymbol]: true,
-    ...definition,
+export function createModule<T>(instance: T): Module<T, never> {
+  const module = {
+    [ModuleSymbol]: true as const,
+    instance,
+    withDestructor(destructor: () => void): Module<T, never> {
+      return {
+        ...module,
+        stop: destructor,
+      };
+    },
+    withInjects<U>(inject: () => U): Module<T, U> {
+      return {
+        ...module,
+        inject,
+      }
+    }
   };
+
+  return module;
 }
 
-function isModule(value: unknown): value is Module<unknown, unknown, unknown> {
+function isModule(value: unknown): value is Module<unknown, unknown> {
   if (value === undefined || value === null) {
     return false;
   }
@@ -126,7 +139,7 @@ function isModule(value: unknown): value is Module<unknown, unknown, unknown> {
   return typeof value === 'object' && Boolean(value && value[ModuleSymbol]);
 }
 
-type GetInjects<T> = T extends Module<unknown, unknown, infer Injects>
+type GetInjects<T> = T extends ((deps: unknown) => Module<unknown, infer Injects>)
   ? {
       [K in keyof Injects]: OutputWire<Injects[K], unknown[]>;
     }
@@ -159,13 +172,10 @@ type SystemConfig<Structure> = PropagateOptional<{
     }>
   }>;
 
-export interface ConfiguredSystem<Structure> extends Module<MapToResultTypes<Structure>, never, never> {
+export interface ConfiguredSystem<Structure> {
   readonly definition: Structure;
   readonly config: SystemConfig<Structure>;
-  start(): {
-    instance: MapToResultTypes<Structure>,
-    stop(): void,
-  };
+  (): Module<MapToResultTypes<Structure>, never>;
 };
 
 type OnlySocketKeys<Structure> = {
@@ -182,8 +192,9 @@ type GetSockets<Structure> = SocketTypes<Pick<Structure, OnlySocketKeys<Structur
 
 type MapToResultTypes<Structure> = {
   [K in keyof Structure]: Structure[K] extends WireHub<unknown, infer Return, unknown[]> ? Return :
-    Structure[K] extends (...config: unknown[]) => infer T ? T :
-    Structure[K] extends Module<infer T, unknown, unknown> ? T : Structure[K]
+    Structure[K] extends (...config: unknown[]) => infer T
+      ? T extends Module<infer V, unknown> ? V : T
+      : Structure[K]
 }
 
 type WireFactory<Structure> = {
@@ -297,78 +308,76 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
         }
       } = config;
 
-      const configuredSystem = {
-        [ModuleSymbol]: true as const,
-        definition: structure,
-        config,
-        start() {
-          const moduleDepsPairs: (readonly [
-            string,
-            {
-              isWireHub: boolean,
-              inputs: FilterDeepResult<InputWire<unknown>>,
-              outputs?: {[key: string]: OutputWire<unknown, unknown[]>},
-            }
-          ])[] = Object.getOwnPropertyNames(config).map((moduleName) => [moduleName, {
-            isWireHub: isWireHub(structure[moduleName]),
-            inputs: filterDeep(config[moduleName] && config[moduleName].config, isInputWire),
-            outputs: config[moduleName] && config[moduleName].inject,
-          }] as const);
-          const moduleDepsMap = fromPairs(moduleDepsPairs);
+      const configuredSystem = () => {
+        const moduleDepsPairs: (readonly [
+          string,
+          {
+            isWireHub: boolean,
+            inputs: FilterDeepResult<InputWire<unknown>>,
+            outputs?: {[key: string]: OutputWire<unknown, unknown[]>},
+          }
+        ])[] = Object.getOwnPropertyNames(config).map((moduleName) => [moduleName, {
+          isWireHub: isWireHub(structure[moduleName]),
+          inputs: filterDeep(config[moduleName] && config[moduleName].config, isInputWire),
+          outputs: config[moduleName] && config[moduleName].inject,
+        }] as const);
+        const moduleDepsMap = fromPairs(moduleDepsPairs);
 
-          const nodes = getAllNodes(structure);
-          const dependencyGraph = createDependencyGraph(moduleDepsPairs);
+        const nodes = getAllNodes(structure);
+        const dependencyGraph = createDependencyGraph(moduleDepsPairs);
 
-          const sortedModules: string[] = toposort.array(nodes, dependencyGraph);
+        const sortedModules: string[] = toposort.array(nodes, dependencyGraph);
 
-          const context: Partial<MapToResultTypes<Structure>> = {};
-          const initializedModules: {[key: string]: {stop?(): void, inject?(): unknown}} = {};
+        const context: Partial<MapToResultTypes<Structure>> = {};
+        const initializedModules: {[key: string]: {stop?(): void, inject?(): unknown}} = {};
 
-          for (const moduleName of sortedModules) {
-            const module = moduleName.replace(/_empty_init_RESERVED$/, '');
-            // If context already has a module, that means that it's a sink
-            if (context[module]) {
-              continue;
-            }
-            const currentModule = structure[module];
-            const moduleConfig = weakTypeConfig[module];
-            if (moduleConfig && moduleConfig.disabled) {
-              continue;
-            }
-            let deps: unknown;
+        for (const moduleName of sortedModules) {
+          const module = moduleName.replace(/_empty_init_RESERVED$/, '');
+          // If context already has a module, that means that it's a sink
+          if (context[module]) {
+            continue;
+          }
+          const currentModule = structure[module];
+          const moduleConfig = weakTypeConfig[module];
+          if (moduleConfig && moduleConfig.disabled) {
+            continue;
+          }
+          let deps: unknown;
 
-            // Resolving InputWires to real deps
-            if (moduleConfig && 'config' in moduleConfig) {
-              deps = moduleConfig.config;
+          // Resolving InputWires to real deps
+          if (moduleConfig && 'config' in moduleConfig) {
+            deps = moduleConfig.config;
 
-              for (const dep of moduleDepsMap[module as string].inputs) {
-                const depConfig = weakTypeConfig[dep.value.prop];
+            for (const dep of moduleDepsMap[module as string].inputs) {
+              const depConfig = weakTypeConfig[dep.value.prop];
 
-                if (depConfig && depConfig.disabled && !dep.value.isOptional) {
-                  throw new Error(`Module "${module}" has a dependency "${dep.value.prop}" at config path "${[module, 'config', ...dep.path].join('.')}", but that dependency is disabled through config and InputWire is not optional.\nPlease remove the disabled flag from "${module}" or make the dependency optional.`);
-                }
-                const depValue = dep.value.mapper(context[dep.value.prop]);
+              if (depConfig && depConfig.disabled && !dep.value.isOptional) {
+                throw new Error(`Module "${module}" has a dependency "${dep.value.prop}" at config path "${[module, 'config', ...dep.path].join('.')}", but that dependency is disabled through config and InputWire is not optional.\nPlease remove the disabled flag from "${module}" or make the dependency optional.`);
+              }
+              const depValue = dep.value.mapper(context[dep.value.prop]);
 
-                if (isWireHub(depValue)) {
-                  deps = deepSet(deps, dep.path, depValue.resolve());
-                } else {
-                  deps = deepSet(deps, dep.path, depValue);
-                }
+              if (isWireHub(depValue)) {
+                deps = deepSet(deps, dep.path, depValue.resolve());
+              } else {
+                deps = deepSet(deps, dep.path, depValue);
               }
             }
+          }
 
-            // Module init
-            if (isWireHub(currentModule)) {
-              context[module] = currentModule;
-            } else if (typeof currentModule === 'function') {
-              context[module] = currentModule(deps);
-            } else if (isModule(currentModule)) {
-              const initializedModule = currentModule.start(deps);
-              initializedModules[module] = initializedModules;
-              context[module] = initializedModule.instance;
+          // Module init
+          if (isWireHub(currentModule)) {
+            context[module] = currentModule;
+          } else if (typeof currentModule === 'function') {
+            const initialized = currentModule(deps);
 
-              if (initializedModule.inject) {
-                const injects = initializedModule.inject();
+            if (isModule(initialized)) {
+              const {instance, stop, inject} = initialized;
+
+              initializedModules[module] = {stop, inject};
+              context[module] = instance;
+
+              if (inject) {
+                const injects = inject();
                 const injectConfig = moduleDepsMap[module].outputs;
 
                 const allInjects = new Set([
@@ -398,14 +407,16 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
                 })
               }
             } else {
-              context[module] = currentModule as unknown;
+              context[module] = initialized;
             }
+          } else {
+            context[module] = currentModule as unknown;
           }
-          const fullContext = context as MapToResultTypes<Structure>;
+        }
+        const fullContext = context as MapToResultTypes<Structure>;
 
-          return {
-            instance: fullContext,
-            stop() {
+        return createModule(fullContext)
+          .withDestructor(() => {
               const reverseSortedModules = sortedModules.reverse();
 
               for (const moduleName of reverseSortedModules) {
@@ -418,12 +429,15 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
                   }
                 }
               }
-            },
-          };
-        }
+          });
       };
 
-      return configuredSystem;
+      Object.assign(configuredSystem, {
+        definition: structure,
+        config,
+      });
+
+      return configuredSystem as ConfiguredSystem<Structure>;
     }
   }
 }

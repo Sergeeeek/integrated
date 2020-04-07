@@ -8,14 +8,12 @@ export interface ReactMiddlewareModuleConfig {
   child: React.ReactNode,
 };
 
-export default createModule({
-  start({middleware, child}: ReactMiddlewareModuleConfig) {
-    return {
-      instance: React.memo(() => {
-        const nested = middleware.reduceRight((acc, Current) =>  <Current>{acc}</Current>, child);
+export function ReactMiddlewareModule({middleware, child}: ReactMiddlewareModuleConfig) {
+  const ReactMiddleware = React.memo(() => {
+    const nested = middleware.reduceRight((acc, Current) =>  <Current>{acc}</Current>, child);
 
-        return <>{nested}</>;
-      })
-    };
-  },
-})
+    return <>{nested}</>;
+  });
+
+  return createModule(ReactMiddleware);
+}
