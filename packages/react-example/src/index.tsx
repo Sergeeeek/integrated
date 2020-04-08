@@ -6,8 +6,8 @@ import { ReactWebModule } from '@ts-module-system/react-web';
 import { SomeProviderModule } from './features/some-provider';
 import { TimeoutAlertModule } from './features/timeout-alert';
 
-function App({useValue}: {useValue: () => string}) {
-  return useValue();
+function App({useValue}: {useValue: () => {value: string | undefined}}) {
+  return <>{useValue().value ?? null}</>;
 }
 
 document.addEventListener('DOMContentLoaded', () => {
@@ -28,7 +28,7 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     root: {
       config: {
-        child: wire.in('prov').map((prov) => <App useValue={useValue} />),
+        child: wire.in('prov').map((prov) => <App useValue={prov.useValue} />),
         middleware: wire.in('middleware')
       }
     },

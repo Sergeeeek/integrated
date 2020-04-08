@@ -1,4 +1,5 @@
 import * as toposort from 'toposort';
+
 import {deepSet, flatten} from './util';
 
 class InputWire<T> {
@@ -17,7 +18,16 @@ function isInputWire(value: unknown): value is InputWire<unknown> {
   return value instanceof InputWire;
 }
 
-const WireHubSymbol = Symbol();
+const WireHubSymbol = '@______internal_WireHubSymbol';
+
+const WireHubProto: {
+  [WireHubSymbol]: true
+} = Object.defineProperty({}, WireHubSymbol, {
+  enumerable: false,
+  configurable: false,
+  writable: false,
+  value: true,
+});
 
 interface WireHub<TAccept, TReturn, TConfig extends unknown[]> {
   [WireHubSymbol]: true;
@@ -37,8 +47,7 @@ type ArrayWireHubConfig = {after?: InputWire<unknown>, before?: InputWire<unknow
 type ArrayWireHub<T> = WireHub<T, Array<T>, [ArrayWireHubConfig?]>
 
 export function createArrayWireHub<T>(entries: {[key: string]: {value: T, config?: ArrayWireHubConfig}} = {}): ArrayWireHub<T> {
-  return {
-    [WireHubSymbol]: true,
+  return Object.assign(Object.create(WireHubProto) as typeof WireHubProto, {
     accept(from: string, value: T, config?: ArrayWireHubConfig) {
       return createArrayWireHub({
         ...entries,
@@ -66,7 +75,7 @@ export function createArrayWireHub<T>(entries: {[key: string]: {value: T, config
 
       return sortedEntries.map(entry => entries[entry].value);
     }
-  };
+  });
 }
 
 class OutputWire<T, Config extends unknown[]>  {
@@ -95,7 +104,15 @@ type GetDeps<T> = T extends (config: infer V) => unknown
   ? {} extends V ? never : RecursiveRef<V>
   : never;
 
-const ModuleSymbol = Symbol();
+const ModuleSymbol = '@______internal_ModuleSymbol';
+const ModuleProto: {
+  [ModuleSymbol]: true
+} = Object.defineProperty({}, ModuleSymbol, {
+  configurable: false,
+  enumerable: false,
+  writable: false,
+  value: true,
+});
 
 export interface ModuleDefinition<T, Deps, Injects> {
   (deps: Deps): readonly [T, {stop?(): void, inject?(): Injects}?];
@@ -110,23 +127,26 @@ export interface Module<T, Injects> {
   withInjects<U>(inject: () => U): Module<T, U>;
 }
 
+function internalCreateModule<T, Injects>(m: Omit<Module<T, Injects>, typeof ModuleSymbol>): Module<T, Injects> {
+  return Object.assign(Object.create(ModuleProto) as typeof ModuleProto, m);
+}
+
 export function createModule<T>(instance: T): Module<T, never> {
-  const module = {
-    [ModuleSymbol]: true as const,
+  const module = internalCreateModule<T, never>({
     instance,
     withDestructor(destructor: () => void): Module<T, never> {
-      return {
+      return internalCreateModule({
         ...module,
         stop: destructor,
-      };
+      });
     },
     withInjects<U>(inject: () => U): Module<T, U> {
-      return {
+      return internalCreateModule({
         ...module,
         inject,
-      }
+      });
     }
-  };
+  });
 
   return module;
 }
@@ -192,8 +212,8 @@ type GetSockets<Structure> = SocketTypes<Pick<Structure, OnlySocketKeys<Structur
 
 type MapToResultTypes<Structure> = {
   [K in keyof Structure]: Structure[K] extends WireHub<unknown, infer Return, unknown[]> ? Return :
-    Structure[K] extends (...config: unknown[]) => infer T
-      ? T extends Module<infer V, unknown> ? V : T
+    Structure[K] extends ((config: never) => infer T)
+      ? T extends Module<infer M, unknown> ? M : T
       : Structure[K]
 }
 
