@@ -11,23 +11,6 @@ type DeepSet<T, Path extends readonly (string | symbol)[], Val> =
     }
     : Val
 
-
-type Test = DeepSet<{
-  readonly nested: [{
-    readonly key: 'asdf'
-  }]
-}, readonly ['nested', '0', 'key'], 123>;
-
-// function get<T, Path extends (string | number | symbol)[]>(obj: T, path: Path): DeepGet<T, Path> {
-//   if (obj === null || obj === undefined) {
-//     return obj;
-//   }
-//
-//   let cur = obj;
-//
-//
-// }
-//
 function last<T>(arr: readonly T[]): T {
   return arr[arr.length - 1];
 }
@@ -79,4 +62,44 @@ export function deepSet<T, Path extends readonly (string | symbol)[], Val>(obj: 
 
 export function flatten<T>(array: ReadonlyArray<ReadonlyArray<T>>): ReadonlyArray<T> {
   return array.reduce((acc, next) => acc.concat(next), []);
+}
+
+function isPrimitiveOrEmpty(v: unknown): v is (string | number | boolean | undefined | null | symbol | Function) {
+  return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'symbol' || typeof v === 'function' || v === undefined || v === null;
+}
+
+export type FilterDeepResult<Search> = ReadonlyArray<{path: (string | symbol)[]; value: Search}>;
+
+export function filterDeep<T, TSearch>(obj: T, predicate: (value: unknown) => value is TSearch, path: (string | symbol)[] = []): FilterDeepResult<TSearch> {
+  if (predicate(obj)) {
+    return [{path: path, value: obj}];
+  }
+
+  if (Array.isArray(obj)) {
+    return flatten(obj.map((elem, index) => filterDeep(elem, predicate, [...path, index.toString()])));
+  }
+
+  if (isPrimitiveOrEmpty(obj)) {
+    return [];
+  }
+
+  if (obj instanceof Object) {
+    const indexedObject = (obj as any);
+    return flatten(
+      [...Object.getOwnPropertyNames(indexedObject), ...(typeof Object.getOwnPropertySymbols === 'function' ? Object.getOwnPropertySymbols(indexedObject) : [])]
+        .map(prop => filterDeep(indexedObject[prop], predicate, [...path, prop]))
+    );
+  }
+
+  // Don't know how to traverse that
+  return [];
+}
+
+export function fromPairs<U>(input: ReadonlyArray<readonly [string, U]>): {[key: string]: U} {
+  return input.reduce<{[key: string]: U}>((acc, [key, val]) => {
+    return {
+      ...acc,
+      [key]: val
+    }
+  }, {});
 }

@@ -1,6 +1,6 @@
 import * as toposort from 'toposort';
 
-import {deepSet, flatten} from './util';
+import {deepSet, flatten, FilterDeepResult, filterDeep, fromPairs} from './util';
 
 class InputWire<T> {
   constructor(public readonly prop: string, public readonly isOptional: boolean = false, public readonly mapper: Function = (id: T) => id) {}
@@ -40,7 +40,13 @@ function isWireHub(value: unknown): value is WireHub<unknown, unknown, unknown[]
     return false;
   }
 
-  return typeof value === 'object' && Boolean(value && value[WireHubSymbol]);
+  if (typeof value === 'object') {
+    const obj = value as {[key: string]: unknown};
+
+    return Boolean(obj[WireHubSymbol]);
+  }
+
+  return false;
 }
 
 type ArrayWireHubConfig = {after?: InputWire<unknown>, before?: InputWire<unknown>}
@@ -155,8 +161,13 @@ function isModule(value: unknown): value is Module<unknown, unknown> {
   if (value === undefined || value === null) {
     return false;
   }
+  if (typeof value === 'object') {
+    const obj = value as {[key: string]: unknown};
 
-  return typeof value === 'object' && Boolean(value && value[ModuleSymbol]);
+    return Boolean(obj[WireHubSymbol]);
+  }
+
+  return false;
 }
 
 type GetInjects<T> = T extends ((deps: unknown) => Module<unknown, infer Injects>)
@@ -228,36 +239,6 @@ export type System<Structure> = {
   ): ConfiguredSystem<Structure>;
 };
 
-function isPrimitive(v: unknown): v is (string | number | boolean | undefined | null | symbol | Function) {
-  return typeof v === 'string' || typeof v === 'number' || typeof v === 'boolean' || typeof v === 'symbol' || typeof v === 'function' || v === undefined || v === null;
-}
-
-type FilterDeepResult<Search> = ReadonlyArray<{path: (string | symbol)[]; value: Search}>;
-
-function filterDeep<T, TSearch>(obj: T, predicate: (value: unknown) => value is TSearch, path: (string | symbol)[] = []): FilterDeepResult<TSearch> {
-  if (predicate(obj)) {
-    return [{path: path, value: obj}];
-  }
-
-  if (Array.isArray(obj)) {
-    return flatten(obj.map((elem, index) => filterDeep(elem, predicate, [...path, index.toString()])));
-  }
-
-  if (isPrimitive(obj)) {
-    return [];
-  }
-
-  if (obj instanceof Object) {
-    return flatten(
-      [...Object.getOwnPropertyNames(obj), ...Object.getOwnPropertySymbols(obj)]
-        .map(prop => filterDeep(obj[prop], predicate, [...path, prop]))
-    );
-  }
-
-  // Don't know how to traverse that
-  return [];
-}
-
 function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isWireHub: boolean, inputs: FilterDeepResult<InputWire<unknown>>, outputs?: {[key: string]: OutputWire<unknown, unknown[]>}}]>): Array<[string, string]> {
   const edges: Array<[string, string]> = [];
   definitions.forEach(([moduleName, {inputs, outputs, isWireHub}]) => {
@@ -286,21 +267,12 @@ function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isW
   return edges;
 }
 
-function fromPairs<U>(input: ReadonlyArray<readonly [string, U]>): {[key: string]: U} {
-  return input.reduce<{[key: string]: U}>((acc, [key, val]) => {
-    return {
-      ...acc,
-      [key]: val
-    }
-  }, {});
-}
-
 function getAllNodes<Structure>(structure: Structure): readonly string[] {
-  return flatten(Object.getOwnPropertyNames(structure).map(key => {
+  return flatten((Object.getOwnPropertyNames(structure) as (keyof Structure)[]).map((key: keyof Structure) => {
     if (isWireHub(structure[key])) {
-      return [`${key}_empty_init_RESERVED`, key];
+      return [`${key}_empty_init_RESERVED`, key as string];
     } else {
-      return [key];
+      return [key as string];
     }
   }));
 }
@@ -336,17 +308,17 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
             inputs: FilterDeepResult<InputWire<unknown>>,
             outputs?: {[key: string]: OutputWire<unknown, unknown[]>},
           }
-        ])[] = Object.getOwnPropertyNames(config).map((moduleName) => [moduleName, {
+        ])[] = (Object.getOwnPropertyNames(config) as string[]).map((moduleName) => [moduleName, {
           isWireHub: isWireHub(structure[moduleName]),
-          inputs: filterDeep(config[moduleName] && config[moduleName].config, isInputWire),
-          outputs: config[moduleName] && config[moduleName].inject,
+          inputs: filterDeep(weakTypeConfig[moduleName] && weakTypeConfig[moduleName].config, isInputWire),
+          outputs: weakTypeConfig[moduleName] && weakTypeConfig[moduleName].inject,
         }] as const);
         const moduleDepsMap = fromPairs(moduleDepsPairs);
 
         const nodes = getAllNodes(structure);
         const dependencyGraph = createDependencyGraph(moduleDepsPairs);
 
-        const sortedModules: string[] = toposort.array(nodes, dependencyGraph);
+        const sortedModules = toposort.array(nodes, dependencyGraph);
 
         const context: Partial<MapToResultTypes<Structure>> = {};
         const initializedModules: {[key: string]: {stop?(): void, inject?(): unknown}} = {};

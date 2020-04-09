@@ -3,6 +3,8 @@
     "target": "ES5",
     "lib": ["ES5"],
     "downlevelIteration": true,
+    "importHelpers": true,
+    "module": "ESNext",
     "strictNullChecks": true,
     "strictFunctionTypes": true
   },
