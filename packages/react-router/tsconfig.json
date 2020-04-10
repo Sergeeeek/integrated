@@ -1,11 +1,10 @@
 {
   "compilerOptions": {
-    "incremental": true,
     "target": "ES5",
-    "lib": ["ES5", "ES6", "ES2015.Symbol", "DOM"],
+    "lib": ["ES5"],
+    "module": "ESNext",
     "downlevelIteration": true,
-    "strictNullChecks": true,
-    "strictFunctionTypes": true,
+    "strict": true,
     "jsx": "preserve"
   },
   "typeAcquisition": {"enable": true}

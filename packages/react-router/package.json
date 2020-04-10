@@ -6,7 +6,7 @@
   "main": "dist/index.js",
   "umd:main": "dist/index.umd.js",
   "types": "dist/index.d.ts",
-  "module": "dist/index.module.js",
+  "module": "dist/index.modern.js",
   "unpkg": "dist/index.umd.js",
   "license": "MIT",
   "dependencies": {
@@ -14,21 +14,26 @@
   },
   "devDependencies": {
     "@types/react-router": "^4.0.0",
+    "@types/react-router-dom": "^4.0.0",
+    "@types/react-router-native": "^4.0.0",
     "@typescript-eslint/eslint-plugin": "^2.24.0",
     "@typescript-eslint/parser": "^2.24.0",
     "eslint": "^6.8.0",
-    "microbundle": "^0.11.0",
+    "microbundle": "^0.12.0-next.8",
     "react": ">=15.x",
-    "react-router": "^4.0.0, ^5.0.0",
+    "react-router-dom": "^4.0.0, ^5.0.0",
     "tslib": "^1.11.1",
     "typescript": "^3.8.3"
   },
   "peerDependencies": {
     "react": ">=15.x",
-    "react-router": "^4.0.0, ^5.0.0"
+    "react-router-dom": "^4.0.0, ^5.0.0"
+  },
+  "optionalDependencies": {
+    "react-router-dom": "^4.0.0, ^5.0.0"
   },
   "scripts": {
-    "dev": "microbundle --no-compress --watch --globals react=React,@ts-module-system/core=TSModuleSystemCore",
-    "build": "microbundle --globals react=React,@ts-module-system/core=TSModuleSystemCore"
+    "dev": "microbundle --no-compress --watch --globals react=React,@ts-module-system/core=TSModuleSystemCore,react-router-dom=ReactRouterDOM",
+    "build": "microbundle --globals react=React,@ts-module-system/core=TSModuleSystemCore,react-router-dom=ReactRouterDOM"
   }
 }
