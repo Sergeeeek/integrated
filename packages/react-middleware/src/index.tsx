@@ -5,11 +5,12 @@ export type ReactMiddleware = React.ComponentType<{children?: React.ReactNode}>;
 
 export interface ReactMiddlewareModuleConfig {
   middleware: readonly ReactMiddleware[],
-  child: React.ReactNode,
+  Child?: React.ComponentType<unknown>,
 };
 
-export function ReactMiddlewareModule({middleware, child}: ReactMiddlewareModuleConfig) {
-  const ReactMiddleware = React.memo(() => {
+export function ReactMiddlewareModule({middleware, Child}: ReactMiddlewareModuleConfig) {
+  const ReactMiddleware = React.memo((props) => {
+    const child = Child ? <Child {...props} /> : props.children;
     const nested = middleware.reduceRight((acc, Current) =>  <Current>{acc}</Current>, child);
 
     return <>{nested}</>;

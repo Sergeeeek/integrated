@@ -2,53 +2,37 @@ import {createSystem, createArrayWireHub} from '@ts-module-system/core';
 import * as React from 'react';
 import { ReactMiddlewareModule } from '@ts-module-system/react-middleware';
 import { ReactWebModule } from '@ts-module-system/react-web';
-
-import { SomeProviderModule } from './features/some-provider';
-import { TimeoutAlertModule } from './features/timeout-alert';
-
-function App({useValue}: {useValue: () => {value: string | undefined}}) {
-  return <>{useValue().value ?? null}</>;
-}
+import { ReactRouterModule } from '@ts-module-system/react-router';
+import {RouteProps} from 'react-router';
 
 document.addEventListener('DOMContentLoaded', () => {
   const system = createSystem({
     root: ReactMiddlewareModule,
     react: ReactWebModule,
+    router: ReactRouterModule,
+    routes: createArrayWireHub<React.ReactElement<RouteProps>>(),
     middleware: createArrayWireHub<React.ComponentType<{children?: React.ReactNode}>>(),
-    timeoutAlert: TimeoutAlertModule,
-    prov: SomeProviderModule<string>(),
   });
 
   const configuredSystem = system.configure(wire => ({
     react: {
       config: {
-        App: wire.in('root'),
+        App: wire.in('router'),
         selector: '#root'
+      }
+    },
+    router: {
+      config: {
+        routes: wire.in('routes'),
+        type: 'browser',
+        initialEntries: ['/']
       }
     },
     root: {
       config: {
-        child: wire.in('prov').map((prov) => <App useValue={prov.useValue} />),
         middleware: wire.in('middleware')
       }
     },
-    timeoutAlert: {
-      config: {
-        alert: 'Hello',
-        timeout: 5000,
-      },
-      inject: {
-        middleware: wire.out('middleware')
-      }
-    },
-    prov: {
-      config: {
-        value: 'asdfasdfasdf'
-      },
-      inject: {
-        middleware: wire.out('middleware', {after: wire.in('timeoutAlert')})
-      }
-    }
   }));
 
   configuredSystem();

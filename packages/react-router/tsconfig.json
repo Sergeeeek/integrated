@@ -2,7 +2,6 @@
   "compilerOptions": {
     "target": "ES5",
     "lib": ["ES5"],
-    "module": "ESNext",
     "downlevelIteration": true,
     "strict": true,
     "jsx": "preserve"

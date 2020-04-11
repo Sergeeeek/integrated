@@ -3,11 +3,12 @@ import { createModule } from '@ts-module-system/core';
 import {BrowserRouter, HashRouter, RouteProps, MemoryRouter, Switch} from 'react-router-dom';
 
 type RouterType = 'memory' | 'browser' | 'hash';
+export type LocationDescriptor = History.LocationDescriptor;
 
 interface ReactRouterModuleDeps {
-  initialEntries?: History.LocationDescriptor[],
+  initialEntries?: LocationDescriptor[],
   initialIndex?: number,
-  routes: readonly React.ReactElement<RouteProps>[],
+  routes: React.ReactElement<RouteProps>[],
   Child?: React.ComponentType<{children?: React.ReactNode}>,
   type?: RouterType,
 }

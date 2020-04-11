@@ -5,6 +5,11 @@
   "repository": "git@github.com:Sergeeeek/ts-module-system.git",
   "author": "Sergey Poznyak <Sergeeeekg@gmail.com>",
   "license": "MIT",
-  "workspaces": ["packages/*"],
+  "workspaces": [
+    "packages/*"
+  ],
+  "scripts": {
+    "build": "yarn workspaces run build"
+  },
   "private": true
 }

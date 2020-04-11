@@ -107,7 +107,7 @@ type RecursiveRef<Deps> = Deps extends never ? never : {
 };
 
 type GetDeps<T> = T extends (config: infer V) => unknown
-  ? {} extends V ? never : RecursiveRef<V>
+  ? RecursiveRef<V>
   : never;
 
 const ModuleSymbol = '@______internal_ModuleSymbol';
@@ -164,7 +164,7 @@ function isModule(value: unknown): value is Module<unknown, unknown> {
   if (typeof value === 'object') {
     const obj = value as {[key: string]: unknown};
 
-    return Boolean(obj[WireHubSymbol]);
+    return Boolean(obj[ModuleSymbol]);
   }
 
   return false;
@@ -185,9 +185,17 @@ type RemoveNever<T> = Omit<T, {
   [K in keyof T]: [T[K]] extends [never] ? K : never
 }[keyof T]>
 
+
 type RequiredNestedKeys<T> = RequiredKeys<{
   [K in keyof T]: RequiredKeys<T[K]>
 }>;
+
+type TestRequired = PropagateOptional<{
+  test: {
+    disabled?: boolean,
+    config: GetDeps<(deps: {asdf: string}) => number>
+  }
+}>
 
 type PropagateOptional<T> = {
   [K in RequiredNestedKeys<T>]-?: T[K]
@@ -202,6 +210,10 @@ type SystemConfig<Structure> = PropagateOptional<{
         inject: GetInjects<Structure[K]>,
     }>
   }>;
+
+type Test = SystemConfig<{
+  test: (deps: {asdf: string}) => number,
+}>
 
 export interface ConfiguredSystem<Structure> {
   readonly definition: Structure;
