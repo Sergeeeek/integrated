@@ -1,9 +1,11 @@
+import { ReactMiddlewareModule } from '@ts-module-system/react-middleware';
+import { ReactRouterModule } from '@ts-module-system/react-router';
+import { ReactWebModule } from '@ts-module-system/react-web';
 import {createSystem, createArrayWireHub} from '@ts-module-system/core';
 import * as React from 'react';
-import { ReactMiddlewareModule } from '@ts-module-system/react-middleware';
-import { ReactWebModule } from '@ts-module-system/react-web';
-import { ReactRouterModule } from '@ts-module-system/react-router';
-import {RouteProps} from 'react-router';
+
+import {Link} from 'react-router-dom';
+import { Route, RouteProps } from 'react-router';
 
 document.addEventListener('DOMContentLoaded', () => {
   const system = createSystem({

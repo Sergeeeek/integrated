@@ -37,7 +37,7 @@ export function ReactRouterModule({
       <Router initialEntries={initialEntries} initialIndex={initialIndex}>
         <Child>
           <Switch>
-            {routes}
+            {routes.map((routeElem, index) => React.cloneElement(routeElem, {key: index}))}
           </Switch>
         </Child>
       </Router>
