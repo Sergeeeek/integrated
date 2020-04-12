@@ -170,11 +170,20 @@ function isModule(value: unknown): value is Module<unknown, unknown> {
   return false;
 }
 
+type ModuleResultType<T> = T extends WireHub<unknown, infer Return, unknown[]> ? Return :
+    T extends ((() => infer R) | ((config: never) => infer R))
+      ? R extends Module<infer M, unknown> ? M : R
+      : T
+
+interface GetSelfInject<T> {
+  readonly self?: OutputWire<ModuleResultType<T>, unknown[]>,
+};
+
 type GetInjects<T> = T extends ((deps: unknown) => Module<unknown, infer Injects>)
   ? {
-      [K in keyof Injects]: OutputWire<Injects[K], unknown[]>;
+      [K in Exclude<keyof Injects, 'self'>]: OutputWire<Injects[K], unknown[]>;
     }
-  : never;
+  : {};
 
 
 type RequiredKeys<T> = Exclude<keyof T, {
@@ -190,13 +199,6 @@ type RequiredNestedKeys<T> = RequiredKeys<{
   [K in keyof T]: RequiredKeys<T[K]>
 }>;
 
-type TestRequired = PropagateOptional<{
-  test: {
-    disabled?: boolean,
-    config: GetDeps<(deps: {asdf: string}) => number>
-  }
-}>
-
 type PropagateOptional<T> = {
   [K in RequiredNestedKeys<T>]-?: T[K]
 } & {
@@ -204,16 +206,16 @@ type PropagateOptional<T> = {
 }
 
 type SystemConfig<Structure> = PropagateOptional<{
-    [K in keyof Structure]: RemoveNever<{
+    [K in keyof Structure]: PropagateOptional<RemoveNever<{
         disabled?: boolean,
         config: GetDeps<Structure[K]>,
-        inject: GetInjects<Structure[K]>,
-    }>
+        inject: GetSelfInject<Structure[K]> & GetInjects<Structure[K]>,
+    }>>
   }>;
 
-type Test = SystemConfig<{
-  test: (deps: {asdf: string}) => number,
-}>
+type Test = MapToResultTypes<{
+  test: (deps: string) => ((smth: number) => void)
+}>;
 
 export interface ConfiguredSystem<Structure> {
   readonly definition: Structure;
@@ -234,10 +236,7 @@ type SocketTypes<Structure> = {
 type GetSockets<Structure> = SocketTypes<Pick<Structure, OnlySocketKeys<Structure>>>
 
 type MapToResultTypes<Structure> = {
-  [K in keyof Structure]: Structure[K] extends WireHub<unknown, infer Return, unknown[]> ? Return :
-    Structure[K] extends ((config: never) => infer T)
-      ? T extends Module<infer M, unknown> ? M : T
-      : Structure[K]
+  [K in keyof Structure]: ModuleResultType<Structure[K]>
 }
 
 type WireFactory<Structure> = {
@@ -337,7 +336,7 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
 
         for (const moduleName of sortedModules) {
           const module = moduleName.replace(/_empty_init_RESERVED$/, '');
-          // If context already has a module, that means that it's a sink
+          // If context already has a module, that means that it's a sink, because sinks appear in sortedModules twice
           if (context[module]) {
             continue;
           }
@@ -395,18 +394,23 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
                     console.error('Found in config', injectConfig);
                     throw new Error(`Tried to inject a value from "${module}", but either the value was not provided or inject destination was not configured.\nSee error above for more details.`);
                   }
-                  const sinkRef = injectConfig[key];
-                  const maybeSink = context[sinkRef.prop];
-                  const sinkConfig = weakTypeConfig[sinkRef.prop];
+                  const outputWire = injectConfig[key];
+
+                  if (!isOutputWire(outputWire)) {
+                    throw new Error(`Wrong value passed to inject.${key} in module "${module}". Please use wire.out to configure injects.`);
+                  }
+
+                  const maybeSink = context[outputWire.prop];
+                  const sinkConfig = weakTypeConfig[outputWire.prop];
 
                   if (sinkConfig && sinkConfig.disabled) {
-                    throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}", but WireHub "${sinkRef.prop}" is disabled`)
+                    throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but WireHub "${outputWire.prop}" is disabled`)
                   }
 
                   if (isWireHub(maybeSink)) {
-                    context[sinkRef.prop] = maybeSink.accept(module, sinkRef.mapper(injects[sinkRef.prop]), ...sinkRef.config);
+                    context[outputWire.prop] = maybeSink.accept(module, outputWire.mapper(injects[outputWire.prop]), ...outputWire.config);
                   } else {
-                    throw new Error(`Tried to inject a value from "${module}" into "${sinkRef.prop}", but "${sinkRef.prop}" is not a WireHub"`)
+                    throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but "${outputWire.prop}" is not a WireHub"`)
                   }
                 })
               }
@@ -415,6 +419,29 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
             }
           } else {
             context[module] = currentModule as unknown;
+          }
+
+          //// Inject self
+          if (moduleConfig && moduleConfig.inject && moduleConfig.inject.self) {
+            const outputWire = moduleConfig.inject.self;
+            const self = context[module];
+
+            if (isOutputWire(outputWire)) {
+              const maybeSink = context[outputWire.prop];
+              const sinkConfig = weakTypeConfig[outputWire.prop];
+
+              if (sinkConfig && sinkConfig.disabled) {
+                throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but WireHub "${outputWire.prop}" is disabled`)
+              }
+
+              if (isWireHub(maybeSink)) {
+                context[outputWire.prop] = maybeSink.accept(module, outputWire.mapper(self), ...outputWire.config);
+              } else {
+                throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but "${outputWire.prop}" is not a WireHub"`)
+              }
+            } else {
+              throw new Error(`Wrong value passed to inject.self in module "${module}". Please use wire.out to configure injects.`)
+            }
           }
         }
         const fullContext = context as MapToResultTypes<Structure>;
