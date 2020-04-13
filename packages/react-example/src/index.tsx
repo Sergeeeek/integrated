@@ -63,12 +63,7 @@ document.addEventListener('DOMContentLoaded', () => {
     },
     home: {
       inject: {
-        self: wire.out('dashboardLinks').map(homeScreen => ({
-          name: 'Home',
-          path: 'home',
-          image: '',
-          Component: homeScreen,
-        }))
+        dashboardLink: wire.out('dashboardLinks')
       }
     }
   }));

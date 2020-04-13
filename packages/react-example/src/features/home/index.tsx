@@ -1,9 +1,18 @@
 import * as React from 'react';
+import { createModule } from '@ts-module-system/core';
 
 function HomeScreen() {
   return <>Home screen, wow</>
 }
 
 export function HomeModule() {
-  return HomeScreen;
+  return createModule(HomeScreen)
+    .withInjects(() => ({
+      dashboardLink: {
+        name: 'Home',
+        path: 'home',
+        image: '',
+        Component: HomeScreen,
+      }
+    }));
 }

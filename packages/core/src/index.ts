@@ -91,9 +91,9 @@ class OutputWire<T, Config extends unknown[]>  {
     this.config = config;
   }
 
-  map<U, V extends T = T>(mapper: (val: V) => U): OutputWire<U, Config> {
-    return new OutputWire(this.prop, (val: V) => mapper(this.mapper(val)), ...this.config);
-  }
+  // map<U, V extends T = T>(mapper: (val: V) => U): OutputWire<U, Config> {
+  //   return new OutputWire(this.prop, (val: V) => mapper(this.mapper(val)), ...this.config);
+  // }
 }
 
 function isOutputWire(value: unknown): value is OutputWire<unknown, unknown[]> {
@@ -408,7 +408,7 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
                   }
 
                   if (isWireHub(maybeSink)) {
-                    context[outputWire.prop] = maybeSink.accept(module, outputWire.mapper(injects[outputWire.prop]), ...outputWire.config);
+                    context[outputWire.prop] = maybeSink.accept(module, outputWire.mapper(injects[key]), ...outputWire.config);
                   } else {
                     throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but "${outputWire.prop}" is not a WireHub"`)
                   }
