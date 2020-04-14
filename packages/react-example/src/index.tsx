@@ -58,7 +58,7 @@ document.addEventListener('DOMContentLoaded', () => {
         links: wire.in('dashboardLinks')
       },
       inject: {
-        self: wire.out('routes')
+        self: [wire.out('routes')]
       }
     },
     home: {

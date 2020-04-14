@@ -130,7 +130,7 @@ export interface Module<T, Injects> {
   stop?(): void;
   inject?(): Injects;
   withDestructor(destructor: () => void): Module<T, Injects>;
-  withInjects<U>(inject: () => U): Module<T, U>;
+  withInjects<U extends {[key: string]: unknown}>(inject: () => U): Module<T, U>;
 }
 
 function internalCreateModule<T, Injects>(m: Omit<Module<T, Injects>, typeof ModuleSymbol>): Module<T, Injects> {
@@ -175,13 +175,15 @@ type ModuleResultType<T> = T extends WireHub<unknown, infer Return, unknown[]> ?
       ? R extends Module<infer M, unknown> ? M : R
       : T
 
+type InjectConfig<T> = OutputWire<T, unknown[]> | readonly OutputWire<T, unknown[]>[];
+
 interface GetSelfInject<T> {
-  readonly self?: OutputWire<ModuleResultType<T>, unknown[]>,
+  readonly self?: InjectConfig<ModuleResultType<T>>,
 };
 
 type GetInjects<T> = T extends ((deps: unknown) => Module<unknown, infer Injects>)
   ? {
-      [K in Exclude<keyof Injects, 'self'>]: OutputWire<Injects[K], unknown[]>;
+      readonly [K in Exclude<keyof Injects, 'self'>]: InjectConfig<Injects[K]>;
     }
   : {};
 
@@ -250,7 +252,7 @@ export type System<Structure> = {
   ): ConfiguredSystem<Structure>;
 };
 
-function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isWireHub: boolean, inputs: FilterDeepResult<InputWire<unknown>>, outputs?: {[key: string]: OutputWire<unknown, unknown[]>}}]>): Array<[string, string]> {
+function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isWireHub: boolean, inputs: FilterDeepResult<InputWire<unknown>>, outputs?: {[key: string]: InjectConfig<unknown>}}]>): Array<[string, string]> {
   const edges: Array<[string, string]> = [];
   definitions.forEach(([moduleName, {inputs, outputs, isWireHub}]) => {
     if (isWireHub) {
@@ -260,17 +262,27 @@ function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isW
     inputs.forEach(dep => edges.push([dep.value.prop, moduleName]));
 
     if (outputs) {
-      Object.getOwnPropertyNames(outputs).forEach(prop => {
-        const sinkRef = outputs[prop];
-        const sinkProp = sinkRef.prop;
+      const addOutput = (outputWire: OutputWire<unknown, unknown[]>) => {
+          const wireProp = outputWire.prop;
 
-        // WireHub is going to be initialized at '${sinkProp}_empty_init_RESERVED'.
-        // To put a value in a sink module will depend on its start point node.
-        // To make sure all sink values are initialized before the sink is used,
-        // module will be a dependency of sink "end" graph node. if you depend on sink "end",
-        // you can be sure that all things that all SinkRefs for that sink are resolved
-        edges.push([`${sinkProp}_empty_init_RESERVED`, moduleName])
-        edges.push([moduleName, sinkProp]);
+          // WireHub is going to be initialized at '${sinkProp}_empty_init_RESERVED'.
+          // To put a value in a sink module will depend on its start point node.
+          // To make sure all sink values are initialized before the sink is used,
+          // module will be a dependency of sink "end" graph node. if you depend on sink "end",
+          // you can be sure that all things that all SinkRefs for that sink are resolved
+          edges.push([`${wireProp}_empty_init_RESERVED`, moduleName])
+          edges.push([moduleName, wireProp]);
+      }
+      Object.getOwnPropertyNames(outputs).forEach(prop => {
+        const outputWireOrArray = outputs[prop];
+
+        if (Array.isArray(outputWireOrArray)) {
+          outputWireOrArray.forEach(addOutput);
+        } else {
+          // TypeScript can't infer that if it's not an array
+          // then it's definitely OutputWire. Weird
+          addOutput(outputWireOrArray as OutputWire<unknown, unknown[]>);
+        }
       });
     }
   });
@@ -317,7 +329,7 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
           {
             isWireHub: boolean,
             inputs: FilterDeepResult<InputWire<unknown>>,
-            outputs?: {[key: string]: OutputWire<unknown, unknown[]>},
+            outputs?: {[key: string]: InjectConfig<unknown>},
           }
         ])[] = (Object.getOwnPropertyNames(config) as string[]).map((moduleName) => [moduleName, {
           isWireHub: isWireHub(structure[moduleName]),
@@ -367,6 +379,21 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
             }
           }
 
+          const acceptInject = (outputWire: OutputWire<unknown, unknown[]>, inject: unknown) => {
+            const maybeSink = context[outputWire.prop];
+            const sinkConfig = weakTypeConfig[outputWire.prop];
+
+            if (sinkConfig && sinkConfig.disabled) {
+              throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but WireHub "${outputWire.prop}" is disabled`)
+            }
+
+            if (isWireHub(maybeSink)) {
+              context[outputWire.prop] = maybeSink.accept(module, outputWire.mapper(inject), ...outputWire.config);
+            } else {
+              throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but "${outputWire.prop}" is not a WireHub"`)
+            }
+          };
+
           // Module init
           if (isWireHub(currentModule)) {
             context[module] = currentModule;
@@ -380,39 +407,6 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
               context[module] = instance;
 
               if (inject) {
-                const injects = inject();
-                const injectConfig = moduleDepsMap[module].outputs;
-
-                const allInjects = new Set([
-                  ...Object.getOwnPropertyNames(injects),
-                  ...Object.getOwnPropertyNames(injectConfig)]
-                );
-
-                allInjects.forEach(key => {
-                  if (!(injects instanceof Object && key in injects && injectConfig && key in injectConfig)) {
-                    console.error('Provided by module: ', injects);
-                    console.error('Found in config', injectConfig);
-                    throw new Error(`Tried to inject a value from "${module}", but either the value was not provided or inject destination was not configured.\nSee error above for more details.`);
-                  }
-                  const outputWire = injectConfig[key];
-
-                  if (!isOutputWire(outputWire)) {
-                    throw new Error(`Wrong value passed to inject.${key} in module "${module}". Please use wire.out to configure injects.`);
-                  }
-
-                  const maybeSink = context[outputWire.prop];
-                  const sinkConfig = weakTypeConfig[outputWire.prop];
-
-                  if (sinkConfig && sinkConfig.disabled) {
-                    throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but WireHub "${outputWire.prop}" is disabled`)
-                  }
-
-                  if (isWireHub(maybeSink)) {
-                    context[outputWire.prop] = maybeSink.accept(module, outputWire.mapper(injects[key]), ...outputWire.config);
-                  } else {
-                    throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but "${outputWire.prop}" is not a WireHub"`)
-                  }
-                })
               }
             } else {
               context[module] = initialized;
@@ -421,27 +415,50 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
             context[module] = currentModule as unknown;
           }
 
-          //// Inject self
-          if (moduleConfig && moduleConfig.inject && moduleConfig.inject.self) {
-            const outputWire = moduleConfig.inject.self;
-            const self = context[module];
+          if (initializedModules[module] && initializedModules[module].inject || moduleConfig && moduleConfig.inject && moduleConfig.inject.self) {
+            const inject = () => {
+              if (initializedModules[module] && initializedModules[module].inject) {
+                const result = initializedModules[module].inject!();
+                if (typeof result === 'object') {
+                  return result;
+                }
+              }
+            };
+            const injects = {
+              ...(inject ? inject() : undefined),
+              self: context[module],
+            };
+            const injectConfig = moduleDepsMap[module].outputs;
 
-            if (isOutputWire(outputWire)) {
-              const maybeSink = context[outputWire.prop];
-              const sinkConfig = weakTypeConfig[outputWire.prop];
+            const allInjects = new Set([
+              ...Object.getOwnPropertyNames(injects),
+              ...Object.getOwnPropertyNames(injectConfig)
+            ]);
 
-              if (sinkConfig && sinkConfig.disabled) {
-                throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but WireHub "${outputWire.prop}" is disabled`)
+            allInjects.forEach(key => {
+              if (!(injects instanceof Object && key in injects && injectConfig && (key in injectConfig || key === 'self'))) {
+                console.error('Provided by module: ', injects);
+                console.error('Found in config', injectConfig);
+                throw new Error(`Tried to inject a value from "${module}", but either the value was not provided or inject destination was not configured.\nSee error above for more details.`);
+              }
+              if (key === 'self' && injectConfig.self === undefined || injectConfig.self === null) {
+                return;
+              }
+              const outputWireOrArray = injectConfig[key];
+
+              const isValidConfig = isOutputWire(outputWireOrArray) || (Array.isArray(outputWireOrArray) && outputWireOrArray.every(out => isOutputWire(out)));
+              if (!isValidConfig) {
+                throw new Error(`Wrong value passed to inject.${key} in module "${module}". Please use wire.out to configure injects.`);
               }
 
-              if (isWireHub(maybeSink)) {
-                context[outputWire.prop] = maybeSink.accept(module, outputWire.mapper(self), ...outputWire.config);
+              if (Array.isArray(outputWireOrArray)) {
+                outputWireOrArray.forEach(wire => acceptInject(wire, injects[key]));
               } else {
-                throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but "${outputWire.prop}" is not a WireHub"`)
+                const outputWire = outputWireOrArray as OutputWire<unknown, unknown[]>;
+
+                acceptInject(outputWire, injects[key]);
               }
-            } else {
-              throw new Error(`Wrong value passed to inject.self in module "${module}". Please use wire.out to configure injects.`)
-            }
+            });
           }
         }
         const fullContext = context as MapToResultTypes<Structure>;
@@ -454,10 +471,8 @@ export function createSystem<Structure>(structure: Structure): System<Structure>
                 if (weakTypeConfig[moduleName] && weakTypeConfig[moduleName].disabled) {
                   continue;
                 }
-                if (isModule(structure[moduleName])) {
-                  if (initializedModules[moduleName] && initializedModules[moduleName].stop) {
-                    initializedModules[moduleName].stop!();
-                  }
+                if (initializedModules[moduleName] && initializedModules[moduleName].stop) {
+                  initializedModules[moduleName].stop!();
                 }
               }
           });
