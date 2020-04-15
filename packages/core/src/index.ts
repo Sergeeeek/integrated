@@ -215,10 +215,6 @@ type SystemConfig<Structure> = PropagateOptional<{
     }>>
   }>;
 
-type Test = MapToResultTypes<{
-  test: (deps: string) => ((smth: number) => void)
-}>;
-
 export interface ConfiguredSystem<Structure> {
   readonly definition: Structure;
   readonly config: SystemConfig<Structure>;
@@ -300,9 +296,15 @@ function getAllNodes<Structure>(structure: Structure): readonly string[] {
   }));
 }
 
-export function createSystem<Structure>(structure: Structure): System<Structure> {
+export function createSystem<Structure extends {}>(structure: Structure): System<Structure> {
+  if (typeof structure !== 'object' || structure === null || Array.isArray(structure)) {
+    throw new Error('createSystem only accepts objects');
+  }
   return {
     configure(closure) {
+      if (typeof closure !== 'function') {
+        throw new Error('System.configure only accepts functions');
+      }
       const wireFactory: WireFactory<Structure> = {
         in(key) {
           return new InputWire(key as string);
