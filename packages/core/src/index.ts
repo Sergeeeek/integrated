@@ -1,104 +1,10 @@
 import * as toposort from 'toposort';
 
-import {deepSet, flatten, FilterDeepResult, filterDeep, fromPairs} from './util';
-
-class InputWire<T> {
-  constructor(public readonly prop: string, public readonly isOptional: boolean = false, public readonly mapper: Function = (id: T) => id) {}
-
-  get optional(): InputWire<undefined | T> {
-    return new InputWire<undefined | T>(this.prop, true, this.mapper);
-  }
-
-  map<U>(mapper: (value: T) => U): InputWire<U> {
-    return new InputWire<U>(this.prop, this.isOptional, (value: T) => mapper(this.mapper(value)));
-  }
-}
-
-function isInputWire(value: unknown): value is InputWire<unknown> {
-  return value instanceof InputWire;
-}
-
-const WireHubSymbol = '@______internal_WireHubSymbol';
-
-const WireHubProto: {
-  [WireHubSymbol]: true
-} = Object.defineProperty({}, WireHubSymbol, {
-  enumerable: false,
-  configurable: false,
-  writable: false,
-  value: true,
-});
-
-interface WireHub<TAccept, TReturn, TConfig extends unknown[]> {
-  [WireHubSymbol]: true;
-  accept(from: string, value: TAccept, ...config: TConfig): WireHub<TAccept, TReturn, TConfig>;
-  resolve(): TReturn;
-}
-
-function isWireHub(value: unknown): value is WireHub<unknown, unknown, unknown[]> {
-  if (value === undefined || value === null) {
-    return false;
-  }
-
-  if (typeof value === 'object') {
-    const obj = value as {[key: string]: unknown};
-
-    return Boolean(obj[WireHubSymbol]);
-  }
-
-  return false;
-}
-
-type ArrayWireHubConfig = {after?: InputWire<unknown>, before?: InputWire<unknown>}
-type ArrayWireHub<T> = WireHub<T, Array<T>, [ArrayWireHubConfig?]>
-
-export function createArrayWireHub<T>(entries: {[key: string]: {value: T, config?: ArrayWireHubConfig}} = {}): ArrayWireHub<T> {
-  return Object.assign(Object.create(WireHubProto) as typeof WireHubProto, {
-    accept(from: string, value: T, config?: ArrayWireHubConfig) {
-      return createArrayWireHub({
-        ...entries,
-        [from]: {
-          value,
-          config
-        }
-      });
-    },
-    resolve() {
-      const nodes = Object.getOwnPropertyNames(entries);
-      const edges = flatten(nodes.map(node => {
-        const {config} = entries[node];
-        if (!config) {
-          return [];
-        }
-
-        return [
-          config.before ? [node, config.before.prop] : null,
-          config.after ? [config.after.prop, node] : null,
-        ].filter(v => v !== null) as [string, string][];
-      }));
-
-      const sortedEntries = toposort.array(nodes, edges);
-
-      return sortedEntries.map(entry => entries[entry].value);
-    }
-  });
-}
-
-class OutputWire<T, Config extends unknown[]>  {
-  _contravarianceHack?(arg: T): void;
-  readonly config: Config;
-  constructor(public readonly prop: string, public readonly mapper: Function = (id: T) => id, ...config: Config) {
-    this.config = config;
-  }
-
-  // map<U, V extends T = T>(mapper: (val: V) => U): OutputWire<U, Config> {
-  //   return new OutputWire(this.prop, (val: V) => mapper(this.mapper(val)), ...this.config);
-  // }
-}
-
-function isOutputWire(value: unknown): value is OutputWire<unknown, unknown[]> {
-  return value instanceof OutputWire;
-}
+import { InputWire, isInputWire } from './InputWire';
+import { Module, createModule, isModule, ModuleDefinition } from './Module';
+import { OutputWire, isOutputWire } from './OutputWire';
+import { WireHub, isWireHub, createArrayWireHub, ArrayWireHub, ArrayWireHubConfig } from './WireHub';
+import { deepSet, flatten, FilterDeepResult, filterDeep, fromPairs } from './util';
 
 type RecursiveRef<Deps> = Deps extends never ? never : {
   [K in keyof Deps]:
@@ -109,66 +15,6 @@ type RecursiveRef<Deps> = Deps extends never ? never : {
 type GetDeps<T> = T extends (config: infer V) => unknown
   ? RecursiveRef<V>
   : never;
-
-const ModuleSymbol = '@______internal_ModuleSymbol';
-const ModuleProto: {
-  [ModuleSymbol]: true
-} = Object.defineProperty({}, ModuleSymbol, {
-  configurable: false,
-  enumerable: false,
-  writable: false,
-  value: true,
-});
-
-export interface ModuleDefinition<T, Deps, Injects> {
-  (deps: Deps): readonly [T, {stop?(): void, inject?(): Injects}?];
-}
-
-export interface Module<T, Injects> {
-  [ModuleSymbol]: true;
-  instance: T;
-  stop?(): void;
-  inject?(): Injects;
-  withDestructor(destructor: () => void): Module<T, Injects>;
-  withInjects<U extends {[key: string]: unknown}>(inject: () => U): Module<T, U>;
-}
-
-function internalCreateModule<T, Injects>(m: Omit<Module<T, Injects>, typeof ModuleSymbol>): Module<T, Injects> {
-  return Object.assign(Object.create(ModuleProto) as typeof ModuleProto, m);
-}
-
-export function createModule<T>(instance: T): Module<T, never> {
-  const module = internalCreateModule<T, never>({
-    instance,
-    withDestructor(destructor: () => void): Module<T, never> {
-      return internalCreateModule({
-        ...module,
-        stop: destructor,
-      });
-    },
-    withInjects<U>(inject: () => U): Module<T, U> {
-      return internalCreateModule({
-        ...module,
-        inject,
-      });
-    }
-  });
-
-  return module;
-}
-
-function isModule(value: unknown): value is Module<unknown, unknown> {
-  if (value === undefined || value === null) {
-    return false;
-  }
-  if (typeof value === 'object') {
-    const obj = value as {[key: string]: unknown};
-
-    return Boolean(obj[ModuleSymbol]);
-  }
-
-  return false;
-}
 
 type ModuleResultType<T> = T extends WireHub<unknown, infer Return, unknown[]> ? Return :
     T extends ((() => infer R) | ((config: never) => infer R))
@@ -307,9 +153,27 @@ export function createSystem<Structure extends {}>(structure: Structure): System
       }
       const wireFactory: WireFactory<Structure> = {
         in(key) {
+          if (typeof key !== 'string') {
+            throw new Error('WireFactory.in only accepts strings');
+          }
+          if (!(key in structure)) {
+            const validKeys = Object.getOwnPropertyNames(structure);
+            throw new Error(`WireFactory.in called with unknown key "${key}". Valid keys for this system are ${validKeys.map(prop => `"${prop}"`).join(', ')}`)
+          }
           return new InputWire(key as string);
         },
         out(key, ...config) {
+          if (typeof key !== 'string') {
+            throw new Error(`WireFactory.out only accepts strings, but received ${JSON.stringify(key) || key && key.toString()}`)
+          }
+          if (!(key in structure)) {
+            const validKeys = Object.getOwnPropertyNames(structure).filter(prop => isWireHub(structure[prop]));
+            throw new Error(`WireFactory.out called with unknown key "${key}". Valid output keys for this system are ${validKeys.map(prop => `"${prop}"`).join(', ')}`)
+          }
+          if (!isWireHub(structure[key])) {
+            const validKeys = Object.getOwnPropertyNames(structure).filter(prop => isWireHub(structure[prop]));
+            throw new Error(`WireFactory.out called with key "${key}", but "${key}" is not a WireHub in this system. Valid output keys for this system are ${validKeys.map(prop => `"${prop}"`).join(', ')}`)
+          }
           return new OutputWire(key as string, (id: unknown) => id, ...config);
         }
       };
@@ -489,3 +353,9 @@ export function createSystem<Structure extends {}>(structure: Structure): System
     }
   }
 }
+
+// WireHub exports
+export { WireHub, isWireHub, createArrayWireHub, ArrayWireHub, ArrayWireHubConfig };
+
+// Module exports
+export { Module, createModule, isModule, ModuleDefinition }

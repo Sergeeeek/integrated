@@ -1,4 +1,4 @@
-import {createSystem} from '.';
+import {createSystem} from './index';
 
 describe('system', () => {
   describe('createSystem', () => {
@@ -67,12 +67,5 @@ describe('system', () => {
     });
 
     /// TODO: Make sure System.configure validates the config returned from configuration closure
-  });
-
-  describe('WireFactory', () => {
-    const system = createSystem({
-      test: 'constant',
-      func: (deps: {something: string}) => deps.something,
-    });
   });
 });
