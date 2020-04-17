@@ -1,0 +1,19 @@
+// Jest Snapshot v1, https://goo.gl/fbAQLP
+
+exports[`system system configure function should check that config closure doesn't return "string" 1`] = `"System configuration closure should return a plain object"`;
+
+exports[`system system configure function should check that config closure doesn't return [] 1`] = `"System configuration closure should return a plain object"`;
+
+exports[`system system configure function should check that config closure doesn't return [Function anonymous] 1`] = `"System configuration closure should return a plain object"`;
+
+exports[`system system configure function should check that config closure doesn't return 123 1`] = `"System configuration closure should return a plain object"`;
+
+exports[`system system configure function should check that config closure doesn't return Symbol() 1`] = `"System configuration closure should return a plain object"`;
+
+exports[`system system configure function should check that config closure doesn't return null 1`] = `"System configuration closure should return a plain object"`;
+
+exports[`system system configure function should check that config closure doesn't return true 1`] = `"System configuration closure should return a plain object"`;
+
+exports[`system system configure function should check that config closure doesn't return undefined 1`] = `"System configuration closure should return a plain object"`;
+
+exports[`system system configure function should check that config doesn't contain any keys that don't exist in structure 1`] = `"Config contains keys that don't exist in system definition. These keys are: \\"nonExistingModule\\""`;

@@ -4,7 +4,7 @@ import { InputWire, isInputWire } from './InputWire';
 import { Module, createModule, isModule, ModuleDefinition } from './Module';
 import { OutputWire, isOutputWire } from './OutputWire';
 import { WireHub, isWireHub, createArrayWireHub, ArrayWireHub, ArrayWireHubConfig } from './WireHub';
-import { deepSet, flatten, FilterDeepResult, filterDeep, fromPairs } from './util';
+import { deepSet, flatten, FilterDeepResult, filterDeep, fromPairs, setDifference } from './util';
 
 type RecursiveRef<Deps> = Deps extends never ? never : {
   [K in keyof Deps]:
@@ -142,6 +142,21 @@ function getAllNodes<Structure>(structure: Structure): readonly string[] {
   }));
 }
 
+function validateConfig<Structure>(structure: Structure, config: SystemConfig<Structure>) {
+  if (typeof config !== 'object' || config === null || Array.isArray(config)) {
+    throw new Error('System configuration closure should return a plain object');
+  }
+
+  const structureKeys = new Set(Object.getOwnPropertyNames(structure));
+  const configKeys = new Set(Object.getOwnPropertyNames(config));
+
+  const difference = setDifference(structureKeys, configKeys);
+
+  if (difference.size > 0) {
+    throw new Error(`Config contains keys that don\'t exist in system definition. These keys are: ${[...difference].map(key => `"${key}"`).join(', ')}`)
+  }
+}
+
 export function createSystem<Structure extends {}>(structure: Structure): System<Structure> {
   if (typeof structure !== 'object' || structure === null || Array.isArray(structure)) {
     throw new Error('createSystem only accepts objects');
@@ -179,6 +194,9 @@ export function createSystem<Structure extends {}>(structure: Structure): System
       };
 
       const config = closure(wireFactory);
+
+      validateConfig(structure, config);
+
       const weakTypeConfig: {
         [key: string]: {
           disabled?: boolean,

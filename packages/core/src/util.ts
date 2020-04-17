@@ -103,3 +103,18 @@ export function fromPairs<U>(input: ReadonlyArray<readonly [string, U]>): {[key:
     }
   }, {});
 }
+
+/**
+ * Returns all values that exist in the second and don't exist in the first set
+ */
+export function setDifference<T>(set1: Set<T>, set2: Set<T>): Set<T> {
+  const result = new Set<T>();
+
+  for (const val of set2) {
+    if (!set1.has(val)) {
+      result.add(val);
+    }
+  }
+
+  return result;
+}

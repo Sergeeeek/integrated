@@ -66,6 +66,38 @@ describe('system', () => {
       });
     });
 
-    /// TODO: Make sure System.configure validates the config returned from configuration closure
+    test.each([
+      undefined,
+      null,
+      [],
+      Symbol(),
+      123,
+      'string',
+      true,
+      () => undefined
+    ])('should check that config closure doesn\'t return %p', (config) => {
+      // @ts-ignore-next-line
+      expect(() => createSystem({}).configure(() => config)).toThrowErrorMatchingSnapshot();
+    });
+
+    it('should check that config doesn\'t contain any keys that don\'t exist in structure', () => {
+      const system = createSystem({
+        module: () => undefined,
+        module2: (deps: {myDependency: string}) => deps.myDependency,
+      });
+
+      expect(() => system.configure(() => ({
+        module2: {
+          config: {
+            myDependency: 'asdf'
+          }
+        },
+        nonExistingModule: {
+          config: {
+            asdf: 123
+          }
+        }
+      }))).toThrowErrorMatchingSnapshot();
+    });
   });
 });
