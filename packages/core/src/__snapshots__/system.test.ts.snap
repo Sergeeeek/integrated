@@ -15,5 +15,3 @@ exports[`system system configure function should check that config closure doesn
 exports[`system system configure function should check that config closure doesn't return true 1`] = `"System configuration closure should return a plain object"`;
 
 exports[`system system configure function should check that config closure doesn't return undefined 1`] = `"System configuration closure should return a plain object"`;
-
-exports[`system system configure function should check that config doesn't contain any keys that don't exist in structure 1`] = `"Config contains keys that don't exist in system definition. These keys are: \\"nonExistingModule\\""`;

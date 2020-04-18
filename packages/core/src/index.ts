@@ -6,7 +6,7 @@ import { OutputWire, isOutputWire } from './OutputWire';
 import { WireHub, isWireHub, createArrayWireHub, ArrayWireHub, ArrayWireHubConfig } from './WireHub';
 import { deepSet, flatten, FilterDeepResult, filterDeep, fromPairs, setDifference } from './util';
 
-type RecursiveRef<Deps> = Deps extends never ? never : {
+type RecursiveRef<Deps> = [Deps] extends [never] ? never : {
   [K in keyof Deps]:
     | Deps[K]
     | InputWire<Deps[K] | RecursiveRef<Deps[K]>>;
@@ -18,7 +18,7 @@ type GetDeps<T> = T extends (config: infer V) => unknown
 
 type ModuleResultType<T> = T extends WireHub<unknown, infer Return, unknown[]> ? Return :
     T extends ((() => infer R) | ((config: never) => infer R))
-      ? R extends Module<infer M, unknown> ? M : R
+      ? R extends Module<infer M, {}> ? M : R
       : T
 
 type InjectConfig<T> = OutputWire<T, unknown[]> | readonly OutputWire<T, unknown[]>[];
@@ -142,6 +142,12 @@ function getAllNodes<Structure>(structure: Structure): readonly string[] {
   }));
 }
 
+function prettyPrintArray(arr: readonly string[]): string {
+  return JSON.stringify(arr);
+}
+
+const allowedModuleConfigKeys = new Set(['config', 'inject', 'disabled']);
+
 function validateConfig<Structure>(structure: Structure, config: SystemConfig<Structure>) {
   if (typeof config !== 'object' || config === null || Array.isArray(config)) {
     throw new Error('System configuration closure should return a plain object');
@@ -153,7 +159,19 @@ function validateConfig<Structure>(structure: Structure, config: SystemConfig<St
   const difference = setDifference(structureKeys, configKeys);
 
   if (difference.size > 0) {
-    throw new Error(`Config contains keys that don\'t exist in system definition. These keys are: ${[...difference].map(key => `"${key}"`).join(', ')}`)
+    throw new Error(`Config contains keys that don\'t exist in system definition. These keys are: ${prettyPrintArray([...difference])}`)
+  }
+
+  // Validating each module's configs for invalid keys
+  for (const configKey of configKeys) {
+    const moduleConfig = config[configKey];
+
+    const moduleConfigKeys = new Set(Object.getOwnPropertyNames(moduleConfig));
+    const invalidModuleConfigKeys = setDifference(allowedModuleConfigKeys, moduleConfigKeys);
+
+    if (invalidModuleConfigKeys.size > 0) {
+      throw new Error(`Config for module "${configKey}" contains invalid keys: ${prettyPrintArray([...invalidModuleConfigKeys])}. Only these keys are allowed: ${prettyPrintArray([...allowedModuleConfigKeys])}`)
+    }
   }
 }
 
@@ -173,7 +191,7 @@ export function createSystem<Structure extends {}>(structure: Structure): System
           }
           if (!(key in structure)) {
             const validKeys = Object.getOwnPropertyNames(structure);
-            throw new Error(`WireFactory.in called with unknown key "${key}". Valid keys for this system are ${validKeys.map(prop => `"${prop}"`).join(', ')}`)
+            throw new Error(`WireFactory.in called with unknown key "${key}". Valid keys for this system are ${prettyPrintArray(validKeys)}`)
           }
           return new InputWire(key as string);
         },
@@ -183,11 +201,11 @@ export function createSystem<Structure extends {}>(structure: Structure): System
           }
           if (!(key in structure)) {
             const validKeys = Object.getOwnPropertyNames(structure).filter(prop => isWireHub(structure[prop]));
-            throw new Error(`WireFactory.out called with unknown key "${key}". Valid output keys for this system are ${validKeys.map(prop => `"${prop}"`).join(', ')}`)
+            throw new Error(`WireFactory.out called with unknown key "${key}". Valid output keys for this system are ${prettyPrintArray(validKeys)}`)
           }
           if (!isWireHub(structure[key])) {
             const validKeys = Object.getOwnPropertyNames(structure).filter(prop => isWireHub(structure[prop]));
-            throw new Error(`WireFactory.out called with key "${key}", but "${key}" is not a WireHub in this system. Valid output keys for this system are ${validKeys.map(prop => `"${prop}"`).join(', ')}`)
+            throw new Error(`WireFactory.out called with key "${key}", but "${key}" is not a WireHub in this system. Valid output keys for this system are ${prettyPrintArray(validKeys)}`)
           }
           return new OutputWire(key as string, (id: unknown) => id, ...config);
         }
