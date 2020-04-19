@@ -1,4 +1,5 @@
-import { createSystem, createModule } from ".";
+import { createSystem, createModule, ConfiguredSystem } from ".";
+import { flatten } from './util';
 
 describe("system", () => {
   describe("createSystem", () => {
@@ -209,22 +210,67 @@ describe("system", () => {
 
 
     describe('order of initialization', () => {
-      test('if module B depends on module A, then A should be initialized earlier than B', () => {
-        const order: string[] = [];
-        const configuredSystem = createSystem({
-          A: () => order.push('A'),
-          B: (deps: {A: number}) => order.push('B'),
-        }).configure(wire => ({
-          B: {
-            config: {
-              A: wire.in('A'),
+      function getOrderOfInitializationForDeps(edges: readonly [string, string][]): string[] {
+        const structure: {[key: string]: (deps: {[key: string]: number} & {order: string[]}) => number} & {order?: string[]} = {};
+        structure.order = [];
+        const allNodes = new Set(flatten(edges))
+        for (const node of allNodes) {
+          structure[node] = (deps: {[key: string]: number} & {order: string[]}) => deps.order.push(node)
+        }
+
+        const result = createSystem(structure)
+          .configure(wire => {
+            const config = {};
+
+            for (const node of allNodes) {
+              config[node] = {
+                config: {
+                  order: wire.in('order'),
+                },
+              };
             }
-          }
-        }));
 
-        configuredSystem();
+            // From dependent to dependency,
+            // e.g. if A depends on B, then from = A and to = B
+            for (const [from, to] of edges) {
+              config[from] = {
+                ...config[from],
+                config: {
+                  ...config[from].config,
+                  [to]: wire.in(to),
+                },
+              }
+            }
 
+            return config;
+          })();
+
+        return result.instance.order!;
+      }
+
+      test('if module B depends on module A, then A should be initialized earlier than B', () => {
+        const order = getOrderOfInitializationForDeps([
+          ['B', 'A']
+        ]);
         expect(order).toEqual(['A', 'B']);
+      });
+
+      test('if module C depends on B and B depends on A, then the order of initialization should be A => B => C', () => {
+        const order = getOrderOfInitializationForDeps([
+          ['C', 'B'],
+          ['B', 'A']
+        ]);
+
+        expect(order).toEqual(['A', 'B', 'C']);
+      });
+
+      test('if B depends on A and A depends on C, then order of init should be C => A => B', () => {
+        const order = getOrderOfInitializationForDeps([
+          ['B', 'A'],
+          ['A', 'C']
+        ]);
+
+        expect(order).toEqual(['C', 'A', 'B']);
       });
     });
   });
