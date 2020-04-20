@@ -1,4 +1,5 @@
-import { createSystem, createModule, ConfiguredSystem } from ".";
+import { InputWire } from './InputWire';
+import { createSystem, createModule } from '.';
 import { flatten } from './util';
 
 describe("system", () => {
@@ -173,7 +174,7 @@ describe("system", () => {
       it('should resolve a wire.in call to the return value of the function module, instad of the function itself', () => {
         const module2 = jest.fn((deps: {dependency: string}) => deps.dependency);
         const configuredSystem = createSystem({
-          module1: () => 'module1Instance',
+          module1: () => 'functionModuleInstance',
           module2,
         }).configure(wire => ({
           module2: {
@@ -185,7 +186,7 @@ describe("system", () => {
 
         configuredSystem();
 
-        expect(module2).toHaveBeenCalledWith({dependency: 'module1Instance'});
+        expect(module2).toHaveBeenCalledWith({dependency: 'functionModuleInstance'});
       });
 
       // TODO: Really need to think of better names to make it less confusing
@@ -205,6 +206,53 @@ describe("system", () => {
         configuredSystem();
 
         expect(module2).toHaveBeenCalledWith({dependency: 'module1Instance'});
+      });
+
+      it('should resolve wire.in in nested structures such as objects, arrays, es6 sets, es6 maps', () => {
+        const system = createSystem({
+          constant: 'constant',
+          module: (deps: {
+            value: string,
+            array: string[],
+            tuple: [string],
+            nested: {
+              value: string,
+              deepNested: {
+                value: string,
+              },
+            },
+          }) => deps,
+        });
+
+        const configuredSystem = system.configure(wire => ({
+          module: {
+            config: {
+              value: wire.in('constant'),
+              array: [wire.in('constant'), wire.in('constant')],
+              tuple: [wire.in('constant')],
+              nested: {
+                value: wire.in('constant'),
+                deepNested: {
+                  value: wire.in('constant')
+                }
+              }
+            },
+          },
+        }));
+
+        const result = configuredSystem().instance.module;
+
+        expect(result).toEqual({
+          value: 'constant',
+          array: ['constant', 'constant'],
+          tuple: ['constant'],
+          nested: {
+            value: 'constant',
+            deepNested: {
+              value: 'constant'
+            }
+          }
+        });
       });
     });
 

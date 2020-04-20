@@ -6,14 +6,20 @@ import { OutputWire, isOutputWire } from './OutputWire';
 import { WireHub, isWireHub, createArrayWireHub, ArrayWireHub, ArrayWireHubConfig } from './WireHub';
 import { deepSet, flatten, FilterDeepResult, filterDeep, fromPairs, setDifference } from './util';
 
-type RecursiveRef<Deps> = [Deps] extends [never] ? never : {
-  [K in keyof Deps]:
-    | Deps[K]
-    | InputWire<Deps[K] | RecursiveRef<Deps[K]>>;
-};
+type Mappable = {[key: string]: unknown} | unknown[] | readonly unknown[];
+
+type RecursiveRef<Deps> = [Deps] extends [never] ? never : Deps extends Mappable ?
+  {
+    [K in keyof Deps]:
+      | RecursiveRef<Deps[K]>
+      | InputWire<RecursiveRef<Deps[K]>>;
+  } :
+  Deps | InputWire<Deps>;
 
 type GetDeps<T> = T extends (config: infer V) => unknown
-  ? RecursiveRef<V>
+  ? {
+    [K in keyof V]: RecursiveRef<V[K]>
+  }
   : never;
 
 type ModuleResultType<T> = T extends WireHub<unknown, infer Return, unknown[]> ? Return :
