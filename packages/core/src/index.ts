@@ -8,17 +8,21 @@ import { deepSet, flatten, FilterDeepResult, filterDeep, fromPairs, setDifferenc
 
 type Mappable = {[key: string]: unknown} | unknown[] | readonly unknown[];
 
-type RecursiveRef<Deps> = [Deps] extends [never] ? never : Deps extends Mappable ?
-  {
-    [K in keyof Deps]:
-      | RecursiveRef<Deps[K]>
-      | InputWire<RecursiveRef<Deps[K]>>;
-  } | InputWire<{
-    [K in keyof Deps]:
-      | RecursiveRef<Deps[K]>
-      | InputWire<RecursiveRef<Deps[K]>>;
-  }> :
-  Deps | InputWire<Deps>;
+type RecursiveRef<Deps> = [Deps] extends [never] ? never :
+  | (Deps extends Mappable
+    ? {
+        [K in keyof Deps]:
+          | RecursiveRef<Deps[K]>
+          | InputWire<RecursiveRef<Deps[K]>>;
+      }
+    : Deps)
+  | InputWire<Deps extends Mappable
+    ? {
+        [K in keyof Deps]:
+          | RecursiveRef<Deps[K]>
+          | InputWire<RecursiveRef<Deps[K]>>;
+      }
+    : Deps>;
 
 type GetDeps<T> = T extends (config: infer V) => unknown
   ? {
@@ -276,17 +280,21 @@ export function createSystem<Structure extends {}>(structure: Structure): System
             deps = moduleConfig.config;
 
             for (const dep of moduleDepsMap[module as string].inputs) {
-              const depConfig = weakTypeConfig[dep.value.prop];
+              const {path, value: inputWire} = dep;
+              const depConfig = weakTypeConfig[inputWire.prop];
 
-              if (depConfig && depConfig.disabled && !dep.value.isOptional) {
-                throw new Error(`Module "${module}" has a dependency "${dep.value.prop}" at config path "${[module, 'config', ...dep.path].join('.')}", but that dependency is disabled through config and InputWire is not optional.\nPlease remove the disabled flag from "${module}" or make the dependency optional.`);
+              if (depConfig && depConfig.disabled && !inputWire.isOptional) {
+                const prettyDependencyPath = [module, 'config', ...path].join('.');
+                throw new Error(`Module "${module}" has a dependency "${inputWire.prop}" at config path "${prettyDependencyPath}",`
+                + ` but that dependency is disabled through config and InputWire is not optional.`
+                + `\nPlease remove the disabled flag from "${inputWire.prop}" or make the dependency at "${prettyDependencyPath}" optional.`);
               }
-              const depValue = dep.value.mapper(context[dep.value.prop]);
+              const depValue = inputWire.mapper(context[inputWire.prop]);
 
               if (isWireHub(depValue)) {
-                deps = deepSet(deps, dep.path, depValue.resolve());
+                deps = deepSet(deps, path, depValue.resolve());
               } else {
-                deps = deepSet(deps, dep.path, depValue);
+                deps = deepSet(deps, path, depValue);
               }
             }
           }

@@ -15,3 +15,8 @@ exports[`system system configure function should check that config closure doesn
 exports[`system system configure function should check that config closure doesn't return true 1`] = `"System configuration closure should return a plain object"`;
 
 exports[`system system configure function should check that config closure doesn't return undefined 1`] = `"System configuration closure should return a plain object"`;
+
+exports[`system system start dependency resolution should give an error when you try to depend on a disabled module 1`] = `
+"Module \\"module\\" has a dependency \\"constant\\" at config path \\"module.config.constant\\", but that dependency is disabled through config and InputWire is not optional.
+Please remove the disabled flag from \\"constant\\" or make the dependency at \\"module.config.constant\\" optional."
+`;
