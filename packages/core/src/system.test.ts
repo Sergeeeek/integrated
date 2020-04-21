@@ -208,7 +208,7 @@ describe("system", () => {
         expect(module2).toHaveBeenCalledWith({dependency: 'module1Instance'});
       });
 
-      it('should resolve wire.in in nested structures such as objects, arrays, es6 sets, es6 maps', () => {
+      it('should resolve wire.in in nested structures such as objects, arrays', () => {
         const system = createSystem({
           constant: 'constant',
           module: (deps: {
@@ -252,6 +252,40 @@ describe("system", () => {
               value: 'constant'
             }
           }
+        });
+      });
+
+      it('should allow to pass inputwires inside of arrays as well as wrapping the array itself', () => {
+        const system = createSystem({
+          constant: 'constant',
+          arrayConstant: (deps: {constant: string}) => [deps.constant],
+          module: (deps: {
+            array1: string[],
+            array2: string[],
+          }) => deps,
+        });
+
+        const configuredSystem = system.configure(wire => {
+          return {
+            arrayConstant: {
+              config: {
+                constant: wire.in('constant'),
+              }
+            },
+            module: {
+              config: {
+                array1: [wire.in('constant'), wire.in('constant')],
+                array2: wire.in('arrayConstant'),
+              }
+            }
+          };
+        });
+
+        const result = configuredSystem().instance.module;
+
+        expect(result).toEqual({
+          array1: ['constant', 'constant'],
+          array2: ['constant'],
         });
       });
     });

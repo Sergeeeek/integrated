@@ -13,7 +13,11 @@ type RecursiveRef<Deps> = [Deps] extends [never] ? never : Deps extends Mappable
     [K in keyof Deps]:
       | RecursiveRef<Deps[K]>
       | InputWire<RecursiveRef<Deps[K]>>;
-  } :
+  } | InputWire<{
+    [K in keyof Deps]:
+      | RecursiveRef<Deps[K]>
+      | InputWire<RecursiveRef<Deps[K]>>;
+  }> :
   Deps | InputWire<Deps>;
 
 type GetDeps<T> = T extends (config: infer V) => unknown
