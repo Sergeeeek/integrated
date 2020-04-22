@@ -1,8 +1,8 @@
-import { createSystem, createArrayWireHub } from "./index";
+import { createSystem, createArraySocket } from "./index";
 import { InputWire } from "./InputWire";
 
 describe("WireFactory", () => {
-  describe("wire.in", () => {
+  describe("wire.from", () => {
     const exampleSystem = createSystem({
       constant: "constant",
       func: (deps: { something: string }) => deps.something,
@@ -13,7 +13,7 @@ describe("WireFactory", () => {
         exampleSystem.configure((wire) => ({
           func: {
             config: {
-              something: wire.in("constant"),
+              something: wire.from("constant"),
             },
           },
         }))
@@ -28,7 +28,7 @@ describe("WireFactory", () => {
             func: {
               config: {
                 // @ts-ignore
-                something: wire.in(input),
+                something: wire.from(input),
               },
             },
           }))
@@ -42,7 +42,7 @@ describe("WireFactory", () => {
           func: {
             config: {
               // @ts-ignore
-              something: wire.in("someRandomKey"),
+              something: wire.from("someRandomKey"),
             },
           },
         }))
@@ -55,7 +55,7 @@ describe("WireFactory", () => {
       const configuredSystem = exampleSystem.configure((wire) => ({
         func: {
           config: {
-            something: wire.in("constant"),
+            something: wire.from("constant"),
           },
         },
       }));
@@ -67,9 +67,9 @@ describe("WireFactory", () => {
     });
   });
 
-  describe("wire.out", () => {
+  describe("wire.into", () => {
     const exampleSystem = createSystem({
-      arrayWireHub: createArrayWireHub<number>(),
+      arrayWireHub: createArraySocket<number>(),
       constant: 123,
       otherConstant: "constant",
     });
@@ -79,7 +79,7 @@ describe("WireFactory", () => {
         exampleSystem.configure((wire) => ({
           constant: {
             inject: {
-              self: wire.out("arrayWireHub"),
+              self: wire.into("arrayWireHub"),
             },
           },
         }))
@@ -100,7 +100,7 @@ describe("WireFactory", () => {
         exampleSystem.configure((wire) => ({
           constant: {
             // @ts-ignore
-            inject: { self: wire.out(input) },
+            inject: { self: wire.into(input) },
           },
         }))
       ).toThrowError(
@@ -113,7 +113,7 @@ describe("WireFactory", () => {
         exampleSystem.configure((wire) => ({
           constant: {
             // @ts-ignore
-            inject: { self: wire.out("someRandomKey") },
+            inject: { self: wire.into("someRandomKey") },
           },
         }))
       ).toThrowErrorMatchingInlineSnapshot(
@@ -126,11 +126,11 @@ describe("WireFactory", () => {
         exampleSystem.configure((wire) => ({
           constant: {
             // @ts-ignore
-            inject: { self: wire.out("otherConstant") },
+            inject: { self: wire.into("otherConstant") },
           },
         }))
       ).toThrowErrorMatchingInlineSnapshot(
-        `"WireFactory.out called with key \\"otherConstant\\", but \\"otherConstant\\" is not a WireHub in this system. Valid output keys for this system are [\\"arrayWireHub\\"]"`
+        `"WireFactory.out called with key \\"otherConstant\\", but \\"otherConstant\\" is not a Socket in this system. Valid output keys for this system are [\\"arrayWireHub\\"]"`
       );
     });
   });

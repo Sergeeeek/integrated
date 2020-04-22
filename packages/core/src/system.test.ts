@@ -61,8 +61,8 @@ describe("system", () => {
       });
 
       expect(wireFactory).toMatchObject({
-        in: expect.any(Function),
-        out: expect.any(Function),
+        from: expect.any(Function),
+        into: expect.any(Function),
       });
     });
 
@@ -151,7 +151,7 @@ describe("system", () => {
     });
 
     describe("dependency resolution", () => {
-      it("should resolve a wire.in to the value of the constant module", () => {
+      it("should resolve a wire.from to the value of the constant module", () => {
         const module2 = jest.fn(
           (deps: { dependency: string }) => deps.dependency
         );
@@ -163,7 +163,7 @@ describe("system", () => {
         const configuredSystem = system.configure((wire) => ({
           module2: {
             config: {
-              dependency: wire.in("module1"),
+              dependency: wire.from("module1"),
             },
           },
         }));
@@ -173,7 +173,7 @@ describe("system", () => {
         expect(module2).toHaveBeenCalledWith({ dependency: "constant" });
       });
 
-      it("should resolve a wire.in call to the return value of the function module, instad of the function itself", () => {
+      it("should resolve a wire.from call to the return value of the function module, instad of the function itself", () => {
         const module2 = jest.fn(
           (deps: { dependency: string }) => deps.dependency
         );
@@ -183,7 +183,7 @@ describe("system", () => {
         }).configure((wire) => ({
           module2: {
             config: {
-              dependency: wire.in("module1"),
+              dependency: wire.from("module1"),
             },
           },
         }));
@@ -196,7 +196,7 @@ describe("system", () => {
       });
 
       // TODO: Really need to think of better names to make it less confusing
-      it("should resolve a wire.in call to the module type if the function returns a Module", () => {
+      it("should resolve a wire.from call to the module type if the function returns a Module", () => {
         const module2 = jest.fn(
           (deps: { dependency: string }) => deps.dependency
         );
@@ -206,7 +206,7 @@ describe("system", () => {
         }).configure((wire) => ({
           module2: {
             config: {
-              dependency: wire.in("module1"),
+              dependency: wire.from("module1"),
             },
           },
         }));
@@ -216,7 +216,7 @@ describe("system", () => {
         expect(module2).toHaveBeenCalledWith({ dependency: "module1Instance" });
       });
 
-      it("should resolve wire.in in nested structures such as objects, arrays", () => {
+      it("should resolve wire.from from nested structures such as objects, arrays", () => {
         const system = createSystem({
           constant: "constant",
           module: (deps: {
@@ -235,13 +235,13 @@ describe("system", () => {
         const configuredSystem = system.configure((wire) => ({
           module: {
             config: {
-              value: wire.in("constant"),
-              array: [wire.in("constant"), wire.in("constant")],
-              tuple: [wire.in("constant")],
+              value: wire.from("constant"),
+              array: [wire.from("constant"), wire.from("constant")],
+              tuple: [wire.from("constant")],
               nested: {
-                value: wire.in("constant"),
+                value: wire.from("constant"),
                 deepNested: {
-                  value: wire.in("constant"),
+                  value: wire.from("constant"),
                 },
               },
             },
@@ -274,13 +274,13 @@ describe("system", () => {
           return {
             arrayConstant: {
               config: {
-                constant: wire.in("constant"),
+                constant: wire.from("constant"),
               },
             },
             module: {
               config: {
-                array1: [wire.in("constant"), wire.in("constant")],
-                array2: wire.in("arrayConstant"),
+                array1: [wire.from("constant"), wire.from("constant")],
+                array2: wire.from("arrayConstant"),
               },
             },
           };
@@ -304,7 +304,7 @@ describe("system", () => {
           },
           module: {
             config: {
-              constant: wire.in("constant"),
+              constant: wire.from("constant"),
             },
           },
         }));
@@ -312,7 +312,7 @@ describe("system", () => {
         expect(() => configuredSystem()).toThrowErrorMatchingSnapshot();
       });
 
-      it('should allow to depend on disabled modules using wire.in(...).optional', () => {
+      it('should allow to depend on disabled modules using wire.from(...).optional', () => {
         const configuredSystem = createSystem({
           constant: 'constant',
           module: (deps: { constant?: string }) => deps,
@@ -322,7 +322,7 @@ describe("system", () => {
           },
           module: {
             config: {
-              constant: wire.in('constant').optional
+              constant: wire.from('constant').optional
             }
           }
         }));
@@ -357,7 +357,7 @@ describe("system", () => {
           for (const node of allNodes) {
             config[node] = {
               config: {
-                order: wire.in("order"),
+                order: wire.from("order"),
               },
             };
           }
@@ -369,7 +369,7 @@ describe("system", () => {
               ...config[from],
               config: {
                 ...config[from].config,
-                [to]: wire.in(to),
+                [to]: wire.from(to),
               },
             };
           }

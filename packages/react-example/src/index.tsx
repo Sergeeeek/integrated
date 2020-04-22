@@ -1,7 +1,7 @@
 import { ReactMiddlewareModule } from '@ts-module-system/react-middleware';
 import { ReactRouterModule } from '@ts-module-system/react-router';
 import { ReactWebModule } from '@ts-module-system/react-web';
-import {createSystem, createArrayWireHub} from '@ts-module-system/core';
+import {createSystem, createArraySocket} from '@ts-module-system/core';
 import * as React from 'react';
 
 import { RouteProps } from 'react-router';
@@ -21,14 +21,14 @@ document.addEventListener('DOMContentLoaded', () => {
     /**
      * WireHub for injecting routes
      */
-    routes: createArrayWireHub<React.ReactElement<RouteProps>>(),
+    routes: createArraySocket<React.ReactElement<RouteProps>>(),
     /**
      * WireHub for injecting ReactMiddleware.
      */
-    middleware: createArrayWireHub<React.ComponentType<{children?: React.ReactNode}>>(),
+    middleware: createArraySocket<React.ComponentType<{children?: React.ReactNode}>>(),
 
     /// App Modules
-    dashboardLinks: createArrayWireHub<BottomNavigationLink>(),
+    dashboardLinks: createArraySocket<BottomNavigationLink>(),
     dashboard: DashboardModule,
 
     home: HomeModule,
@@ -37,33 +37,33 @@ document.addEventListener('DOMContentLoaded', () => {
   const configuredSystem = system.configure(wire => ({
     react: {
       config: {
-        App: wire.in('router'),
+        App: wire.from('router'),
         selector: '#root'
       },
     },
     router: {
       config: {
-        routes: wire.in('routes'),
+        routes: wire.from('routes'),
         type: 'browser',
       }
     },
     root: {
       config: {
-        middleware: wire.in('middleware')
+        middleware: wire.from('middleware')
       }
     },
     dashboard: {
       config: {
-        basePath: wire.in('dashboardPath'),
-        links: wire.in('dashboardLinks')
+        basePath: wire.from('dashboardPath'),
+        links: wire.from('dashboardLinks')
       },
       inject: {
-        self: [wire.out('routes')]
+        self: [wire.into('routes')]
       }
     },
     home: {
       inject: {
-        dashboardLink: wire.out('dashboardLinks')
+        dashboardLink: wire.into('dashboardLinks')
       }
     }
   }));

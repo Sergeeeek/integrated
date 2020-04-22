@@ -3,7 +3,7 @@ import * as toposort from 'toposort';
 import { InputWire, isInputWire } from './InputWire';
 import { Module, createModule, isModule, ModuleDefinition } from './Module';
 import { OutputWire, isOutputWire } from './OutputWire';
-import { WireHub, isWireHub, createArrayWireHub, ArrayWireHub, ArrayWireHubConfig } from './WireHub';
+import { Socket, isSocket, createArraySocket, ArraySocket, ArraySocketConfig } from './Socket';
 import { deepSet, flatten, FilterDeepResult, filterDeep, fromPairs, setDifference } from './util';
 
 type Mappable = {[key: string]: unknown} | unknown[] | readonly unknown[];
@@ -30,7 +30,7 @@ type GetDeps<T> = T extends (config: infer V) => unknown
   }
   : never;
 
-type ModuleResultType<T> = T extends WireHub<unknown, infer Return, unknown[]> ? Return :
+type ModuleResultType<T> = T extends Socket<unknown, infer Return, unknown[]> ? Return :
     T extends ((() => infer R) | ((config: never) => infer R))
       ? R extends Module<infer M, {}> ? M : R
       : T
@@ -82,13 +82,13 @@ export interface ConfiguredSystem<Structure> {
 };
 
 type OnlySocketKeys<Structure> = {
-  [K in keyof Structure]: Structure[K] extends WireHub<unknown, unknown, unknown[]>
+  [K in keyof Structure]: Structure[K] extends Socket<unknown, unknown, unknown[]>
     ? K
     : never;
 }[keyof Structure];
 
 type SocketTypes<Structure> = {
-  [K in keyof Structure]: Structure[K] extends WireHub<infer V, infer R, infer Config> ? {value: V; return: R; config: Config} : never
+  [K in keyof Structure]: Structure[K] extends Socket<infer V, infer R, infer Config> ? {value: V; return: R; config: Config} : never
 }
 
 type GetSockets<Structure> = SocketTypes<Pick<Structure, OnlySocketKeys<Structure>>>
@@ -98,8 +98,20 @@ type MapToResultTypes<Structure> = {
 }
 
 type WireFactory<Structure> = {
-  in<Key extends keyof Structure>(key: Key): InputWire<MapToResultTypes<Structure>[Key]>;
-  out<Key extends keyof GetSockets<Structure>>(key: Key, ...config: GetSockets<Structure>[Key]['config']): OutputWire<GetSockets<Structure>[Key]['value'], GetSockets<Structure>[Key]['config']>;
+  /**
+   * Wires in the resolved value from another module in this system. This will return
+   * an InputWire which will be resolved to an actual value when system is started.
+   * @param  module A different module in this system
+   * @return        InputWire
+   */
+  from<M extends keyof Structure>(module: M): InputWire<MapToResultTypes<Structure>[M]>;
+  /**
+   * Wires the value of an inject into a specified socket. Returns an OutputWire,
+   * which will be used when system is started.
+   * @param  socket Reference to a socket in the system
+   * @return        OutputWire
+   */
+  into<Key extends keyof GetSockets<Structure>>(socket: Key, ...config: GetSockets<Structure>[Key]['config']): OutputWire<GetSockets<Structure>[Key]['value'], GetSockets<Structure>[Key]['config']>;
 };
 
 export type System<Structure> = {
@@ -108,10 +120,10 @@ export type System<Structure> = {
   ): ConfiguredSystem<Structure>;
 };
 
-function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isWireHub: boolean, inputs: FilterDeepResult<InputWire<unknown>>, outputs?: {[key: string]: InjectConfig<unknown>}}]>): Array<[string, string]> {
+function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isSocket: boolean, inputs: FilterDeepResult<InputWire<unknown>>, outputs?: {[key: string]: InjectConfig<unknown>}}]>): Array<[string, string]> {
   const edges: Array<[string, string]> = [];
-  definitions.forEach(([moduleName, {inputs, outputs, isWireHub}]) => {
-    if (isWireHub) {
+  definitions.forEach(([moduleName, {inputs, outputs, isSocket}]) => {
+    if (isSocket) {
       edges.push([`${moduleName}_empty_init_RESERVED`, moduleName]);
     }
 
@@ -121,7 +133,7 @@ function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isW
       const addOutput = (outputWire: OutputWire<unknown, unknown[]>) => {
           const wireProp = outputWire.prop;
 
-          // WireHub is going to be initialized at '${sinkProp}_empty_init_RESERVED'.
+          // Socket is going to be initialized at '${sinkProp}_empty_init_RESERVED'.
           // To put a value in a sink module will depend on its start point node.
           // To make sure all sink values are initialized before the sink is used,
           // module will be a dependency of sink "end" graph node. if you depend on sink "end",
@@ -148,7 +160,7 @@ function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isW
 
 function getAllNodes<Structure>(structure: Structure): readonly string[] {
   return flatten((Object.getOwnPropertyNames(structure) as (keyof Structure)[]).map((key: keyof Structure) => {
-    if (isWireHub(structure[key])) {
+    if (isSocket(structure[key])) {
       return [`${key}_empty_init_RESERVED`, key as string];
     } else {
       return [key as string];
@@ -199,7 +211,7 @@ export function createSystem<Structure extends {}>(structure: Structure): System
         throw new Error('System.configure only accepts functions');
       }
       const wireFactory: WireFactory<Structure> = {
-        in(key) {
+        from(key) {
           if (typeof key !== 'string') {
             throw new Error('WireFactory.in only accepts strings');
           }
@@ -209,17 +221,17 @@ export function createSystem<Structure extends {}>(structure: Structure): System
           }
           return new InputWire(key as string);
         },
-        out(key, ...config) {
+        into(key, ...config) {
           if (typeof key !== 'string') {
             throw new Error(`WireFactory.out only accepts strings, but received ${JSON.stringify(key) || key && key.toString()}`)
           }
           if (!(key in structure)) {
-            const validKeys = Object.getOwnPropertyNames(structure).filter(prop => isWireHub(structure[prop]));
+            const validKeys = Object.getOwnPropertyNames(structure).filter(prop => isSocket(structure[prop]));
             throw new Error(`WireFactory.out called with unknown key "${key}". Valid output keys for this system are ${prettyPrintArray(validKeys)}`)
           }
-          if (!isWireHub(structure[key])) {
-            const validKeys = Object.getOwnPropertyNames(structure).filter(prop => isWireHub(structure[prop]));
-            throw new Error(`WireFactory.out called with key "${key}", but "${key}" is not a WireHub in this system. Valid output keys for this system are ${prettyPrintArray(validKeys)}`)
+          if (!isSocket(structure[key])) {
+            const validKeys = Object.getOwnPropertyNames(structure).filter(prop => isSocket(structure[prop]));
+            throw new Error(`WireFactory.out called with key "${key}", but "${key}" is not a Socket in this system. Valid output keys for this system are ${prettyPrintArray(validKeys)}`)
           }
           return new OutputWire(key as string, (id: unknown) => id, ...config);
         }
@@ -243,12 +255,12 @@ export function createSystem<Structure extends {}>(structure: Structure): System
         const moduleDepsPairs: (readonly [
           string,
           {
-            isWireHub: boolean,
+            isSocket: boolean,
             inputs: FilterDeepResult<InputWire<unknown>>,
             outputs?: {[key: string]: InjectConfig<unknown>},
           }
         ])[] = (Object.getOwnPropertyNames(config) as string[]).map((moduleName) => [moduleName, {
-          isWireHub: isWireHub(structure[moduleName]),
+          isSocket: isSocket(structure[moduleName]),
           inputs: filterDeep(weakTypeConfig[moduleName] && weakTypeConfig[moduleName].config, isInputWire),
           outputs: weakTypeConfig[moduleName] && weakTypeConfig[moduleName].inject,
         }] as const);
@@ -291,7 +303,7 @@ export function createSystem<Structure extends {}>(structure: Structure): System
               }
               const depValue = inputWire.mapper(context[inputWire.prop]);
 
-              if (isWireHub(depValue)) {
+              if (isSocket(depValue)) {
                 deps = deepSet(deps, path, depValue.resolve());
               } else {
                 deps = deepSet(deps, path, depValue);
@@ -304,18 +316,18 @@ export function createSystem<Structure extends {}>(structure: Structure): System
             const sinkConfig = weakTypeConfig[outputWire.prop];
 
             if (sinkConfig && sinkConfig.disabled) {
-              throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but WireHub "${outputWire.prop}" is disabled`)
+              throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but Socket "${outputWire.prop}" is disabled`)
             }
 
-            if (isWireHub(maybeSink)) {
+            if (isSocket(maybeSink)) {
               context[outputWire.prop] = maybeSink.accept(module, outputWire.mapper(inject), ...outputWire.config);
             } else {
-              throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but "${outputWire.prop}" is not a WireHub"`)
+              throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but "${outputWire.prop}" is not a Socket"`)
             }
           };
 
           // Module init
-          if (isWireHub(currentModule)) {
+          if (isSocket(currentModule)) {
             context[module] = currentModule;
           } else if (typeof currentModule === 'function') {
             const initialized = currentModule(deps);
@@ -368,7 +380,7 @@ export function createSystem<Structure extends {}>(structure: Structure): System
 
               const isValidConfig = isOutputWire(outputWireOrArray) || (Array.isArray(outputWireOrArray) && outputWireOrArray.every(out => isOutputWire(out)));
               if (!isValidConfig) {
-                throw new Error(`Wrong value passed to inject.${key} in module "${module}". Please use wire.out to configure injects.`);
+                throw new Error(`Wrong value passed to inject.${key} in module "${module}". Please use wire.into to configure injects.`);
               }
 
               if (Array.isArray(outputWireOrArray)) {
@@ -408,8 +420,8 @@ export function createSystem<Structure extends {}>(structure: Structure): System
   }
 }
 
-// WireHub exports
-export { WireHub, isWireHub, createArrayWireHub, ArrayWireHub, ArrayWireHubConfig };
+// Socket exports
+export { Socket, isSocket, createArraySocket, ArraySocket, ArraySocketConfig };
 
 // Module exports
 export { Module, createModule, isModule, ModuleDefinition }

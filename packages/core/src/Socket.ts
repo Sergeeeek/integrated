@@ -3,24 +3,24 @@ import * as toposort from 'toposort';
 import {InputWire} from './InputWire';
 import {flatten} from './util';
 
-const WireHubSymbol = '@______internal_WireHubSymbol';
+const SocketSymbol = '@______internal_SocketSymbol';
 
-const WireHubProto: {
-  [WireHubSymbol]: true
-} = Object.defineProperty({}, WireHubSymbol, {
+const SocketProto: {
+  [SocketSymbol]: true
+} = Object.defineProperty({}, SocketSymbol, {
   enumerable: false,
   configurable: false,
   writable: false,
   value: true,
 });
 
-export interface WireHub<TAccept, TReturn, TConfig extends unknown[]> {
-  [WireHubSymbol]: true;
-  accept(from: string, value: TAccept, ...config: TConfig): WireHub<TAccept, TReturn, TConfig>;
+export interface Socket<TAccept, TReturn, TConfig extends unknown[]> {
+  [SocketSymbol]: true;
+  accept(from: string, value: TAccept, ...config: TConfig): Socket<TAccept, TReturn, TConfig>;
   resolve(): TReturn;
 }
 
-export function isWireHub(value: unknown): value is WireHub<unknown, unknown, unknown[]> {
+export function isSocket(value: unknown): value is Socket<unknown, unknown, unknown[]> {
   if (value === undefined || value === null) {
     return false;
   }
@@ -28,19 +28,19 @@ export function isWireHub(value: unknown): value is WireHub<unknown, unknown, un
   if (typeof value === 'object') {
     const obj = value as {[key: string]: unknown};
 
-    return Boolean(obj[WireHubSymbol]);
+    return Boolean(obj[SocketSymbol]);
   }
 
   return false;
 }
 
-export type ArrayWireHubConfig = {after?: InputWire<unknown>, before?: InputWire<unknown>}
-export type ArrayWireHub<T> = WireHub<T, Array<T>, [ArrayWireHubConfig?]>
+export type ArraySocketConfig = {after?: InputWire<unknown>, before?: InputWire<unknown>}
+export type ArraySocket<T> = Socket<T, Array<T>, [ArraySocketConfig?]>
 
-export function createArrayWireHub<T>(entries: {[key: string]: {value: T, config?: ArrayWireHubConfig}} = {}): ArrayWireHub<T> {
-  return Object.assign(Object.create(WireHubProto) as typeof WireHubProto, {
-    accept(from: string, value: T, config?: ArrayWireHubConfig) {
-      return createArrayWireHub({
+export function createArraySocket<T>(entries: {[key: string]: {value: T, config?: ArraySocketConfig}} = {}): ArraySocket<T> {
+  return Object.assign(Object.create(SocketProto) as typeof SocketProto, {
+    accept(from: string, value: T, config?: ArraySocketConfig) {
+      return createArraySocket({
         ...entries,
         [from]: {
           value,
