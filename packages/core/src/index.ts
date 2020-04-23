@@ -1,7 +1,13 @@
 import * as toposort from 'toposort';
 
 import { InputWire, isInputWire } from './InputWire';
-import { Module, createModule, isModule, ModuleDefinition } from './Module';
+import {
+  Module,
+  ModuleDefinition,
+  ModuleWithDestructor,
+  createModule,
+  isModule
+} from './Module';
 import { OutputWire, isOutputWire } from './OutputWire';
 import { Socket, isSocket, createArraySocket, ArraySocket, ArraySocketConfig } from './Socket';
 import { deepSet, flatten, FilterDeepResult, filterDeep, fromPairs, setDifference } from './util';
@@ -78,7 +84,7 @@ type SystemConfig<Structure> = PropagateOptional<{
 export interface ConfiguredSystem<Structure> {
   readonly definition: Structure;
   readonly config: SystemConfig<Structure>;
-  (): Module<MapToResultTypes<Structure>, never>;
+  (): ModuleWithDestructor<MapToResultTypes<Structure>, never>;
 };
 
 type OnlySocketKeys<Structure> = {

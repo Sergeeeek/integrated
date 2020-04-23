@@ -1,5 +1,4 @@
-import { InputWire } from "./InputWire";
-import { createSystem, createModule } from ".";
+import { createSystem, createModule, Module } from ".";
 import { flatten } from "./util";
 
 describe("system", () => {
@@ -334,50 +333,57 @@ describe("system", () => {
       });
     });
 
-    describe("order of initialization", () => {
-      function getOrderOfInitializationForDeps(
-        edges: readonly [string, string][]
-      ): string[] {
-        const structure: {
-          [key: string]: (
-            deps: { [key: string]: number } & { order: string[] }
-          ) => number;
-        } & { order?: string[] } = {};
-        structure.order = [];
-        const allNodes = new Set(flatten(edges));
-        for (const node of allNodes) {
-          structure[node] = (
-            deps: { [key: string]: number } & { order: string[] }
-          ) => deps.order.push(node);
+    function createSystemFromDeps(
+      edges: readonly [string, string][],
+      moduleFactory: (self: string) => (deps: {[key: string]: unknown}) => unknown
+    ) {
+      const structure: {
+        [key: string]: (
+          deps: { [key: string]: unknown }
+        ) => unknown;
+      } = {};
+      const allNodes = new Set(flatten(edges));
+      for (const node of allNodes) {
+        structure[node] = moduleFactory(node);
+      }
+
+      const result = createSystem(structure).configure(wire => {
+        const config: {[key: string]: {config: {[key: string]: unknown}}} = {};
+
+        // From dependent to dependency,
+        // e.g. if A depends on B, then from = A and to = B
+        for (const [from, to] of edges) {
+          const configFrom = config[from] ?? {};
+          config[from] = {
+            ...configFrom,
+            config: {
+              ...configFrom.config,
+              [to]: wire.from(to),
+            },
+          };
         }
 
-        const result = createSystem(structure).configure((wire) => {
-          const config = {};
+        return config;
+      })();
 
-          for (const node of allNodes) {
-            config[node] = {
-              config: {
-                order: wire.from("order"),
-              },
-            };
-          }
+      return result;
+    }
 
-          // From dependent to dependency,
-          // e.g. if A depends on B, then from = A and to = B
-          for (const [from, to] of edges) {
-            config[from] = {
-              ...config[from],
-              config: {
-                ...config[from].config,
-                [to]: wire.from(to),
-              },
-            };
-          }
+    describe("order of initialization", () => {
+      function getOrderOfInitializationForDeps(edges: readonly [string, string][]) {
+        const order: string[] = [];
+        createSystemFromDeps(edges, self => () => order.push(self));
 
-          return config;
-        })();
+        return order;
+      }
 
-        return result.instance.order!;
+      function getOrderOfDestructionForDeps(edges: readonly [string, string][]) {
+        const order: string[] = [];
+        const runningSystem = createSystemFromDeps(edges, self => () => createModule(self).withDestructor(() => order.push(self)));
+
+        runningSystem.stop();
+
+        return order;
       }
 
       test("if module B depends on module A, then A should be initialized earlier than B", () => {
@@ -401,6 +407,15 @@ describe("system", () => {
         ]);
 
         expect(order).toEqual(["C", "A", "B"]);
+      });
+
+      test("order of destruction should be the reversed dependency order", () => {
+        const order = getOrderOfDestructionForDeps([
+          ["B", "A"],
+          ["A", "C"],
+        ]);
+
+        expect(order).toEqual(["B", "A", "C"]);
       });
     });
   });
