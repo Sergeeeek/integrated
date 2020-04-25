@@ -44,7 +44,7 @@ type ModuleResultType<T> = T extends Socket<unknown, infer Return, unknown[]> ? 
 type InjectConfig<T> = OutputWire<T, unknown[]> | readonly OutputWire<T, unknown[]>[];
 
 interface GetSelfInject<T> {
-  readonly self?: InjectConfig<ModuleResultType<T>>,
+  readonly self?: InjectConfig<ModuleResultType<T>>;
 };
 
 type GetInjects<T> = T extends ((deps: unknown) => Module<unknown, infer Injects>)
@@ -75,9 +75,9 @@ type PropagateOptional<T> = {
 
 type SystemConfig<Structure> = PropagateOptional<{
     [K in keyof Structure]: PropagateOptional<RemoveNever<{
-        disabled?: boolean,
-        config: GetDeps<Structure[K]>,
-        inject: GetSelfInject<Structure[K]> & GetInjects<Structure[K]>,
+        disabled?: boolean;
+        config: GetDeps<Structure[K]>;
+        inject: GetSelfInject<Structure[K]> & GetInjects<Structure[K]>;
     }>>
   }>;
 
@@ -126,7 +126,7 @@ export type System<Structure> = {
   ): ConfiguredSystem<Structure>;
 };
 
-function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isSocket: boolean, inputs: FilterDeepResult<InputWire<unknown>>, outputs?: {[key: string]: InjectConfig<unknown>}}]>): Array<[string, string]> {
+function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isSocket: boolean; inputs: FilterDeepResult<InputWire<unknown>>; outputs?: {[key: string]: InjectConfig<unknown>}}]>): Array<[string, string]> {
   const edges: Array<[string, string]> = [];
   definitions.forEach(([moduleName, {inputs, outputs, isSocket}]) => {
     if (isSocket) {
@@ -249,21 +249,21 @@ export function createSystem<Structure extends {}>(structure: Structure): System
 
       const weakTypeConfig: {
         [key: string]: {
-          disabled?: boolean,
-          config?: unknown,
+          disabled?: boolean;
+          config?: unknown;
           inject?: {
-            [injectKey: string]: OutputWire<unknown, unknown[]>
-          }
-        }
+            [injectKey: string]: OutputWire<unknown, unknown[]>;
+          };
+        };
       } = config;
 
       const configuredSystem = () => {
         const moduleDepsPairs: (readonly [
           string,
           {
-            isSocket: boolean,
-            inputs: FilterDeepResult<InputWire<unknown>>,
-            outputs?: {[key: string]: InjectConfig<unknown>},
+            isSocket: boolean;
+            inputs: FilterDeepResult<InputWire<unknown>>;
+            outputs?: {[key: string]: InjectConfig<unknown>};
           }
         ])[] = (Object.getOwnPropertyNames(config) as string[]).map((moduleName) => [moduleName, {
           isSocket: isSocket(structure[moduleName]),
@@ -278,12 +278,14 @@ export function createSystem<Structure extends {}>(structure: Structure): System
         const sortedModules = toposort.array(nodes, dependencyGraph);
 
         const context: Partial<MapToResultTypes<Structure>> = {};
-        const initializedModules: {[key: string]: {stop?(): void, inject?(): unknown}} = {};
+        const initializedModules: {[key: string]: {stop?(): void; inject?(): unknown}} = {};
 
         for (const moduleName of sortedModules) {
           const module = moduleName.replace(/_empty_init_RESERVED$/, '');
+
           // If context already has a module, that means that it's a sink, because sinks appear in sortedModules twice
           if (context[module]) {
+            context[module] = context[module].resolve()
             continue;
           }
           const currentModule = structure[module];
@@ -310,7 +312,11 @@ export function createSystem<Structure extends {}>(structure: Structure): System
               const depValue = inputWire.mapper(context[inputWire.prop]);
 
               if (isSocket(depValue)) {
-                deps = deepSet(deps, path, depValue.resolve());
+                throw new Error(
+                  'Socket wasn\'t resolved before a dependant module started to initialize.'
+                  + '\nSomething is wrong with the world.'
+                  + `\nDependant module is "${module}". Socket is "${inputWire.prop}"`
+                );
               } else {
                 deps = deepSet(deps, path, depValue);
               }
@@ -332,7 +338,10 @@ export function createSystem<Structure extends {}>(structure: Structure): System
             }
           };
 
-          // Module init
+          //
+          // Starting modules
+          //
+
           if (isSocket(currentModule)) {
             context[module] = currentModule;
           } else if (typeof currentModule === 'function') {

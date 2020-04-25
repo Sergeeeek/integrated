@@ -1,4 +1,4 @@
-import { createSystem, createModule, Module } from ".";
+import { createSystem, createModule, createArraySocket } from '.';
 import { flatten } from "./util";
 
 describe("system", () => {
@@ -331,7 +331,99 @@ describe("system", () => {
         const result = configuredSystem();
         expect(result.instance.module.constant).toBeUndefined();
       });
+
+      it('should allow map one InputWire to another', () => {
+        const configuredSystem = createSystem({
+          configTime: new Date('2020-04-25T00:00:00.000Z'),
+          module: (deps: {startTime: string}) => deps.startTime,
+        }).configure(wire => ({
+          module: {
+            config: {
+              startTime: wire.from('configTime').map(date => date.toISOString()),
+            },
+          },
+        }));
+
+        const result = configuredSystem().instance.module;
+
+        expect(result).toBe('2020-04-25T00:00:00.000Z')
+      });
+
+      describe('with sockets', () => {
+        it('should allow to chain multiple maps together', () => {
+          const configuredSystem = createSystem({
+            constant: 10,
+            module: (deps: {something: string}) => deps.something,
+          }).configure(wire => ({
+            module: {
+              config: {
+                something: wire.from('constant')
+                  .map(n => new Array<string>(n).fill('a'))
+                  .map(a => a.join(''))
+                  .map(s => s.toUpperCase())
+              }
+            }
+          }));
+
+          const result = configuredSystem().instance.module;
+
+          expect(result).toBe('AAAAAAAAAA');
+        });
+
+        it('should resolve array socket to an array value', () => {
+          const configuredSystem = createSystem({
+            socket: createArraySocket<number>(),
+            number1: 1,
+            number2: 2,
+            number3: 3,
+            module: (deps: {arrayOfNums: number[]}) => new Set(deps.arrayOfNums),
+          }).configure(wire => ({
+            number1: {
+              inject: { self: wire.into('socket') }
+            },
+            number2: {
+              inject: { self: wire.into('socket') }
+            },
+            number3: {
+              inject: { self: wire.into('socket') }
+            },
+            module: {
+              config: {
+                arrayOfNums: wire.from('socket'),
+              }
+            }
+          }));
+
+          const result = configuredSystem().instance.module;
+
+          expect(result).toEqual(new Set([1, 2, 3]));
+        });
+
+        it('should allow to map the resolved value of a socket when depending on a socket', () => {
+          const configuredSystem = createSystem({
+            socket: createArraySocket<number>(),
+            number1: 1,
+            number2: 2,
+            number3: 3,
+            module: (deps: {socketLength: number}) => deps.socketLength,
+          }).configure(wire => ({
+            number1: { inject: { self: wire.into('socket') } },
+            number2: { inject: { self: wire.into('socket') } },
+            number3: { inject: { self: wire.into('socket') } },
+            module: {
+              config: {
+                socketLength: wire.from('socket').map(arr => arr.length),
+              }
+            },
+          }));
+
+          const result = configuredSystem().instance.module;
+
+          expect(result).toBe(3);
+        });
+      });
     });
+
 
     function createSystemFromDeps(
       edges: readonly [string, string][],
@@ -410,12 +502,41 @@ describe("system", () => {
       });
 
       test("order of destruction should be the reversed dependency order", () => {
-        const order = getOrderOfDestructionForDeps([
+        const order1 = getOrderOfDestructionForDeps([["B", "A"]]);
+        const order2 = getOrderOfDestructionForDeps([
+          ["C", "B"],
+          ["B", "A"],
+        ]);
+        const order3 = getOrderOfDestructionForDeps([
           ["B", "A"],
           ["A", "C"],
         ]);
 
-        expect(order).toEqual(["B", "A", "C"]);
+        expect(order1).toEqual(['B', 'A']);
+        expect(order2).toEqual(['C', 'B', 'A']);
+        expect(order3).toEqual(["B", "A", "C"]);
+      });
+    });
+
+    describe('injects', () => {
+      it('should take take value from injects of a module and put it into a socket specified by wire.into', () => {
+        const configuredSystem = createSystem({
+          socket: createArraySocket<string>(),
+          module: () => createModule(undefined)
+            .withInjects(() => ({
+              test: 'string'
+            })),
+        }).configure(wire => ({
+          module: {
+            inject: {
+              test: wire.into('socket'),
+            }
+          }
+        }));
+
+        const result = configuredSystem().instance.socket;
+
+        expect(result).toEqual(['string']);
       });
     });
   });
