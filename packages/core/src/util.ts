@@ -4,7 +4,7 @@ type DeepGet<T, Path extends readonly (string | number | symbol)[]> = (Path exte
   ? Head extends keyof T ? { value: DeepGet<T[Head], Tail<Path>> } : {value: never}
   : {value: T})['value'];
 
-type DeepSet<T, Path extends readonly (string | symbol)[], Val> =
+type DeepSet<T, Path extends readonly (string | symbol | unknown)[], Val> =
   Path extends readonly [infer Head, ...unknown[]]
     ? {
       [K in keyof T]: K extends Head ? DeepSet<T[K], Tail<Path>, Val> : T[K]
@@ -23,7 +23,13 @@ function arrayReplaceIndex<T>(arr: readonly T[], index: number, val: T): T[] {
   ];
 }
 
-export function deepSet<T, Path extends readonly (string | symbol)[], Val>(obj: T, path: Path, val: Val): DeepSet<T, Path, Val> {
+function mapReplaceKey<K, V>(map: Map<K, V>, key: K, val: V): Map<K, V> {
+  const newMap = new Map<K, V>(map.entries());
+  newMap.set(key, val);
+  return newMap;
+}
+
+export function deepSet<T, Path extends readonly (string | symbol | unknown)[], Val>(obj: T, path: Path, val: Val): DeepSet<T, Path, Val> {
   const objPath = [obj];
 
   for (const prop of path) {
@@ -34,7 +40,17 @@ export function deepSet<T, Path extends readonly (string | symbol)[], Val>(obj: 
     if (last(objPath) === null || last(objPath) === undefined) {
       throw new Error(`Path ${path.join('.')} is invalid on ${JSON.stringify(obj, null, 2)}`);
     }
-    const next = last(objPath)[prop];
+    const lastObj = last(objPath);
+
+    let next;
+    if (lastObj instanceof Map) {
+      next = lastObj.get(prop)
+    } else {
+      if (!(typeof prop === 'string' || typeof prop === 'number' || typeof prop === 'symbol')) {
+        throw new Error(`Don\'t know how to index ${lastObj} with ${prop}`);
+      }
+      next = lastObj[prop];
+    }
 
     objPath.push(next);
   }
@@ -51,10 +67,18 @@ export function deepSet<T, Path extends readonly (string | symbol)[], Val>(obj: 
         throw new Error('Passed invalid string as index to arrayReplaceIndex.')
       }
       return arrayReplaceIndex(next, index, acc);
+    } else if (next instanceof Map) {
+      return mapReplaceKey(next, path[ind], acc);
     } else {
+      const p = path[ind];
+
+      if (!(typeof p === 'string' || typeof p === 'number' || typeof p === 'symbol')) {
+        throw new Error(`Tried to index an object with whatever this is ${JSON.stringify(p)}`);
+      }
+
       return {
         ...next,
-        [path[ind]]: acc,
+        [p]: acc,
       };
     }
   }) as any;
@@ -81,6 +105,10 @@ export function filterDeep<T, TSearch>(obj: T, predicate: (value: unknown) => va
 
   if (isPrimitiveOrEmpty(obj)) {
     return [];
+  }
+
+  if (obj instanceof Map) {
+    return flatten([...obj.entries()].map(([key, val]) => filterDeep(val, predicate, [...path, key])));
   }
 
   if (obj instanceof Object) {

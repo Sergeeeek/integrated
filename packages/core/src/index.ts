@@ -16,19 +16,13 @@ type Mappable = {[key: string]: unknown} | unknown[] | readonly unknown[];
 
 type RecursiveRef<Deps> = [Deps] extends [never] ? never :
   | (Deps extends Mappable
-    ? {
-        [K in keyof Deps]:
-          | RecursiveRef<Deps[K]>
-          | InputWire<RecursiveRef<Deps[K]>>;
-      }
-    : Deps)
-  | InputWire<Deps extends Mappable
-    ? {
-        [K in keyof Deps]:
-          | RecursiveRef<Deps[K]>
-          | InputWire<RecursiveRef<Deps[K]>>;
-      }
-    : Deps>;
+      ? {
+          [K in keyof Deps]:
+            | RecursiveRef<Deps[K]>
+        }
+      : Deps extends Map<infer MK, infer MV> ? Map<MK, RecursiveRef<MV>> : Deps
+    )
+    | (InputWire<Deps>);
 
 type GetDeps<T> = T extends (config: infer V) => unknown
   ? {

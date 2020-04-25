@@ -1,3 +1,4 @@
+import { InputWire } from './InputWire';
 import { createSystem, createModule, createArraySocket } from '.';
 import { flatten } from "./util";
 
@@ -222,11 +223,15 @@ describe("system", () => {
             value: string;
             array: string[];
             tuple: [string];
+            map: Map<string, string>,
             nested: {
               value: string;
               deepNested: {
                 value: string;
               };
+              nestedMap: Map<number, {
+                value: string
+              }>
             };
           }) => deps,
         });
@@ -237,11 +242,19 @@ describe("system", () => {
               value: wire.from("constant"),
               array: [wire.from("constant"), wire.from("constant")],
               tuple: [wire.from("constant")],
+              map: new Map([
+                ['key', wire.from('constant')]
+              ]),
               nested: {
                 value: wire.from("constant"),
                 deepNested: {
                   value: wire.from("constant"),
                 },
+                // TS can't infer a union type of values for an array of tuple KV pairs
+                nestedMap: new Map<number, InputWire<{value: string}> | {value: string | InputWire<string>}>([
+                  [0, {value: wire.from('constant')}],
+                  [1, wire.from('constant').map(c => ({value: c}))],
+                ])
               },
             },
           },
@@ -253,11 +266,18 @@ describe("system", () => {
           value: "constant",
           array: ["constant", "constant"],
           tuple: ["constant"],
+          map: new Map([
+            ['key', 'constant'],
+          ]),
           nested: {
             value: "constant",
             deepNested: {
               value: "constant",
             },
+            nestedMap: new Map([
+              [0, {value: 'constant'}],
+              [1, {value: 'constant'}]
+            ])
           },
         });
       });
