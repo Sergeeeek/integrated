@@ -617,12 +617,12 @@ describe("system", () => {
             },
           }));
 
-          expect(() => configuredSystem()).toThrowError(
-            `Wrong value passed to inject.self in module "constant". Please use wire.into to configure injects.`
+          expect(() => configuredSystem()).toThrowErrorMatchingInlineSnapshot(
+            `"Wrong value passed to inject.self in module \\"constant\\". Please use wire.into to configure injects."`
           );
         });
 
-        it('should throw an error if array of something other than OutputWire is paased as inject target', () => {
+        it("should throw an error if array of something other than OutputWire is paased as inject target", () => {
           const configuredSystem = createSystem({
             constant: "constant",
           }).configure(() => ({
@@ -634,8 +634,8 @@ describe("system", () => {
             },
           }));
 
-          expect(() => configuredSystem()).toThrowError(
-            `Wrong value passed to inject.self in module "constant". Please use wire.into to configure injects.`
+          expect(() => configuredSystem()).toThrowErrorMatchingInlineSnapshot(
+            `"Wrong value passed to inject.self in module \\"constant\\". Please use wire.into to configure injects."`
           );
         });
       });
