@@ -69,7 +69,7 @@ describe("WireFactory", () => {
 
   describe("wire.into", () => {
     const exampleSystem = createSystem({
-      arrayWireHub: createArraySocket<number>(),
+      arraySocket: createArraySocket<number>(),
       constant: 123,
       otherConstant: "constant",
     });
@@ -79,7 +79,7 @@ describe("WireFactory", () => {
         exampleSystem.configure((wire) => ({
           constant: {
             inject: {
-              self: wire.into("arrayWireHub"),
+              self: wire.into("arraySocket"),
             },
           },
         }))
@@ -117,11 +117,11 @@ describe("WireFactory", () => {
           },
         }))
       ).toThrowErrorMatchingInlineSnapshot(
-        `"WireFactory.out called with unknown key \\"someRandomKey\\". Valid output keys for this system are [\\"arrayWireHub\\"]"`
+        `"WireFactory.out called with unknown key \\"someRandomKey\\". Valid output keys for this system are [\\"arraySocket\\"]"`
       );
     });
 
-    it("should not accept a prop that points to something other than a WireHub", () => {
+    it("should not accept a prop that points to something other than a Socket", () => {
       expect(() =>
         exampleSystem.configure((wire) => ({
           constant: {
@@ -130,7 +130,7 @@ describe("WireFactory", () => {
           },
         }))
       ).toThrowErrorMatchingInlineSnapshot(
-        `"WireFactory.out called with key \\"otherConstant\\", but \\"otherConstant\\" is not a Socket in this system. Valid output keys for this system are [\\"arrayWireHub\\"]"`
+        `"WireFactory.out called with key \\"otherConstant\\", but \\"otherConstant\\" is not a Socket in this system. Valid output keys for this system are [\\"arraySocket\\"]"`
       );
     });
   });
