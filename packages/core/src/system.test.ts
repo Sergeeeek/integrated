@@ -2,6 +2,42 @@ import { InputWire } from './InputWire';
 import { createSystem, createModule, createArraySocket } from '.';
 import { flatten } from "./util";
 
+function createSystemFromDeps(
+  edges: readonly [string, string][],
+  moduleFactory: (self: string) => (deps: {[key: string]: unknown}) => unknown
+) {
+  const structure: {
+    [key: string]: (
+      deps: { [key: string]: unknown }
+    ) => unknown;
+  } = {};
+  const allNodes = new Set(flatten(edges));
+  for (const node of allNodes) {
+    structure[node] = moduleFactory(node);
+  }
+
+  const result = createSystem(structure).configure(wire => {
+    const config: {[key: string]: {config: {[key: string]: unknown}}} = {};
+
+    // From dependent to dependency,
+    // e.g. if A depends on B, then from = A and to = B
+    for (const [from, to] of edges) {
+      const configFrom = config[from] ?? {};
+      config[from] = {
+        ...configFrom,
+        config: {
+          ...configFrom.config,
+          [to]: wire.from(to),
+        },
+      };
+    }
+
+    return config;
+  })();
+
+  return result;
+}
+
 describe("system", () => {
   describe("createSystem", () => {
     it("should accept empty structure", () => {
@@ -148,6 +184,18 @@ describe("system", () => {
       expect(structure.func1).toHaveBeenCalledTimes(1);
       expect(structure.func2).toHaveBeenCalledTimes(1);
       expect(structure.func3).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not initialize modules which are disabled', () => {
+      const structure = {
+        module1: jest.fn(() => "module1"),
+      };
+      const configuredSystem = createSystem(structure)
+        .configure(() => ({module1: {disabled: true}}));
+
+      configuredSystem();
+
+      expect(structure.module1).not.toHaveBeenCalled();
     });
 
     describe("dependency resolution", () => {
@@ -445,55 +493,11 @@ describe("system", () => {
     });
 
 
-    function createSystemFromDeps(
-      edges: readonly [string, string][],
-      moduleFactory: (self: string) => (deps: {[key: string]: unknown}) => unknown
-    ) {
-      const structure: {
-        [key: string]: (
-          deps: { [key: string]: unknown }
-        ) => unknown;
-      } = {};
-      const allNodes = new Set(flatten(edges));
-      for (const node of allNodes) {
-        structure[node] = moduleFactory(node);
-      }
-
-      const result = createSystem(structure).configure(wire => {
-        const config: {[key: string]: {config: {[key: string]: unknown}}} = {};
-
-        // From dependent to dependency,
-        // e.g. if A depends on B, then from = A and to = B
-        for (const [from, to] of edges) {
-          const configFrom = config[from] ?? {};
-          config[from] = {
-            ...configFrom,
-            config: {
-              ...configFrom.config,
-              [to]: wire.from(to),
-            },
-          };
-        }
-
-        return config;
-      })();
-
-      return result;
-    }
 
     describe("order of initialization", () => {
       function getOrderOfInitializationForDeps(edges: readonly [string, string][]) {
         const order: string[] = [];
         createSystemFromDeps(edges, self => () => order.push(self));
-
-        return order;
-      }
-
-      function getOrderOfDestructionForDeps(edges: readonly [string, string][]) {
-        const order: string[] = [];
-        const runningSystem = createSystemFromDeps(edges, self => () => createModule(self).withDestructor(() => order.push(self)));
-
-        runningSystem.stop();
 
         return order;
       }
@@ -521,43 +525,79 @@ describe("system", () => {
         expect(order).toEqual(["C", "A", "B"]);
       });
 
-      test("order of destruction should be the reversed dependency order", () => {
-        const order1 = getOrderOfDestructionForDeps([["B", "A"]]);
-        const order2 = getOrderOfDestructionForDeps([
-          ["C", "B"],
-          ["B", "A"],
-        ]);
-        const order3 = getOrderOfDestructionForDeps([
-          ["B", "A"],
-          ["A", "C"],
-        ]);
+      describe('injects', () => {
+        it('should take take value from injects of a module and put it into a socket specified by wire.into', () => {
+          const configuredSystem = createSystem({
+            socket: createArraySocket<string>(),
+            module: () => createModule(undefined)
+              .withInjects(() => ({
+                test: 'string'
+              })),
+          }).configure(wire => ({
+            module: {
+              inject: {
+                test: wire.into('socket'),
+              }
+            }
+          }));
 
-        expect(order1).toEqual(['B', 'A']);
-        expect(order2).toEqual(['C', 'B', 'A']);
-        expect(order3).toEqual(["B", "A", "C"]);
+          const result = configuredSystem().instance.socket;
+
+          expect(result).toEqual(['string']);
+        });
       });
     });
+  });
 
-    describe('injects', () => {
-      it('should take take value from injects of a module and put it into a socket specified by wire.into', () => {
-        const configuredSystem = createSystem({
-          socket: createArraySocket<string>(),
-          module: () => createModule(undefined)
-            .withInjects(() => ({
-              test: 'string'
-            })),
-        }).configure(wire => ({
-          module: {
-            inject: {
-              test: wire.into('socket'),
-            }
-          }
-        }));
+  describe('system stop', () => {
+    function getOrderOfDestructionForDeps(edges: readonly [string, string][]) {
+      const order: string[] = [];
+      const runningSystem = createSystemFromDeps(edges, self => () => createModule(self).withDestructor(() => order.push(self)));
 
-        const result = configuredSystem().instance.socket;
+      runningSystem.stop();
 
-        expect(result).toEqual(['string']);
-      });
+      return order;
+    }
+
+
+    test("order of destruction should be the reversed dependency order", () => {
+      const order1 = getOrderOfDestructionForDeps([["B", "A"]]);
+      const order2 = getOrderOfDestructionForDeps([
+        ["C", "B"],
+        ["B", "A"],
+      ]);
+      const order3 = getOrderOfDestructionForDeps([
+        ["B", "A"],
+        ["A", "C"],
+      ]);
+
+      expect(order1).toEqual(['B', 'A']);
+      expect(order2).toEqual(['C', 'B', 'A']);
+      expect(order3).toEqual(["B", "A", "C"]);
+    });
+
+    it('should call destructors on modules with destructors', () => {
+      const destructor = jest.fn();
+      const configuredSystem = createSystem({
+        module1: () => createModule(undefined).withDestructor(destructor)
+      }).configure(() => ({}));
+
+      const runningSystem = configuredSystem();
+      runningSystem.stop()
+
+      expect(destructor).toHaveBeenCalledTimes(1);
+    });
+
+    it('should not call the destructor on a disabled module', () => {
+      const destructor = jest.fn();
+      const configuredSystem = createSystem({
+        module1: () => createModule(undefined).withDestructor(destructor),
+      }).configure(() => ({module1: {disabled: true}}));
+
+      const runningSystem = configuredSystem();
+      runningSystem.stop();
+
+      expect(destructor).not.toHaveBeenCalled();
     });
   });
 });
