@@ -213,25 +213,25 @@ export function createSystem<Structure extends {}>(structure: Structure): System
       const wireFactory: WireFactory<Structure> = {
         from(key) {
           if (typeof key !== 'string') {
-            throw new Error('WireFactory.in only accepts strings');
+            throw new Error('WireFactory.from only accepts strings');
           }
           if (!(key in structure)) {
             const validKeys = Object.getOwnPropertyNames(structure);
-            throw new Error(`WireFactory.in called with unknown key "${key}". Valid keys for this system are ${prettyPrintArray(validKeys)}`)
+            throw new Error(`WireFactory.from called with unknown key "${key}". Valid keys for this system are ${prettyPrintArray(validKeys)}`)
           }
           return new InputWire(key as string);
         },
         into(key, ...config) {
           if (typeof key !== 'string') {
-            throw new Error(`WireFactory.out only accepts strings, but received ${JSON.stringify(key) || key && key.toString()}`)
+            throw new Error(`WireFactory.into only accepts strings, but received ${JSON.stringify(key) || key && key.toString()}`)
           }
           if (!(key in structure)) {
             const validKeys = Object.getOwnPropertyNames(structure).filter(prop => isSocket(structure[prop]));
-            throw new Error(`WireFactory.out called with unknown key "${key}". Valid output keys for this system are ${prettyPrintArray(validKeys)}`)
+            throw new Error(`WireFactory.into called with unknown key "${key}". Valid output keys for this system are ${prettyPrintArray(validKeys)}`)
           }
           if (!isSocket(structure[key])) {
             const validKeys = Object.getOwnPropertyNames(structure).filter(prop => isSocket(structure[prop]));
-            throw new Error(`WireFactory.out called with key "${key}", but "${key}" is not a Socket in this system. Valid output keys for this system are ${prettyPrintArray(validKeys)}`)
+            throw new Error(`WireFactory.into called with key "${key}", but "${key}" is not a Socket in this system. Valid socket keys for this system are ${prettyPrintArray(validKeys)}`)
           }
           return new OutputWire(key as string, ...config);
         }

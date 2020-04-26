@@ -1,23 +1,23 @@
-import { InputWire } from './InputWire';
-import { createSystem, createModule, createArraySocket } from '.';
+import { InputWire } from "./InputWire";
+import { createSystem, createModule, createArraySocket } from ".";
 import { flatten } from "./util";
 
 function createSystemFromDeps(
   edges: readonly [string, string][],
-  moduleFactory: (self: string) => (deps: {[key: string]: unknown}) => unknown
+  moduleFactory: (self: string) => (deps: { [key: string]: unknown }) => unknown
 ) {
   const structure: {
-    [key: string]: (
-      deps: { [key: string]: unknown }
-    ) => unknown;
+    [key: string]: (deps: { [key: string]: unknown }) => unknown;
   } = {};
   const allNodes = new Set(flatten(edges));
   for (const node of allNodes) {
     structure[node] = moduleFactory(node);
   }
 
-  const result = createSystem(structure).configure(wire => {
-    const config: {[key: string]: {config: {[key: string]: unknown}}} = {};
+  const result = createSystem(structure).configure((wire) => {
+    const config: {
+      [key: string]: { config: { [key: string]: unknown } };
+    } = {};
 
     // From dependent to dependency,
     // e.g. if A depends on B, then from = A and to = B
@@ -186,12 +186,13 @@ describe("system", () => {
       expect(structure.func3).toHaveBeenCalledTimes(1);
     });
 
-    it('should not initialize modules which are disabled', () => {
+    it("should not initialize modules which are disabled", () => {
       const structure = {
         module1: jest.fn(() => "module1"),
       };
-      const configuredSystem = createSystem(structure)
-        .configure(() => ({module1: {disabled: true}}));
+      const configuredSystem = createSystem(structure).configure(() => ({
+        module1: { disabled: true },
+      }));
 
       configuredSystem();
 
@@ -271,15 +272,18 @@ describe("system", () => {
             value: string;
             array: string[];
             tuple: [string];
-            map: Map<string, string>,
+            map: Map<string, string>;
             nested: {
               value: string;
               deepNested: {
                 value: string;
               };
-              nestedMap: Map<number, {
-                value: string
-              }>
+              nestedMap: Map<
+                number,
+                {
+                  value: string;
+                }
+              >;
             };
           }) => deps,
         });
@@ -290,19 +294,21 @@ describe("system", () => {
               value: wire.from("constant"),
               array: [wire.from("constant"), wire.from("constant")],
               tuple: [wire.from("constant")],
-              map: new Map([
-                ['key', wire.from('constant')]
-              ]),
+              map: new Map([["key", wire.from("constant")]]),
               nested: {
                 value: wire.from("constant"),
                 deepNested: {
                   value: wire.from("constant"),
                 },
                 // TS can't infer a union type of values for an array of tuple KV pairs
-                nestedMap: new Map<number, InputWire<{value: string}> | {value: string | InputWire<string>}>([
-                  [0, {value: wire.from('constant')}],
-                  [1, wire.from('constant').map(c => ({value: c}))],
-                ])
+                nestedMap: new Map<
+                  number,
+                  | InputWire<{ value: string }>
+                  | { value: string | InputWire<string> }
+                >([
+                  [0, { value: wire.from("constant") }],
+                  [1, wire.from("constant").map((c) => ({ value: c }))],
+                ]),
               },
             },
           },
@@ -314,18 +320,16 @@ describe("system", () => {
           value: "constant",
           array: ["constant", "constant"],
           tuple: ["constant"],
-          map: new Map([
-            ['key', 'constant'],
-          ]),
+          map: new Map([["key", "constant"]]),
           nested: {
             value: "constant",
             deepNested: {
               value: "constant",
             },
             nestedMap: new Map([
-              [0, {value: 'constant'}],
-              [1, {value: 'constant'}]
-            ])
+              [0, { value: "constant" }],
+              [1, { value: "constant" }],
+            ]),
           },
         });
       });
@@ -379,19 +383,19 @@ describe("system", () => {
         expect(() => configuredSystem()).toThrowErrorMatchingSnapshot();
       });
 
-      it('should allow to depend on disabled modules using wire.from(...).optional', () => {
+      it("should allow to depend on disabled modules using wire.from(...).optional", () => {
         const configuredSystem = createSystem({
-          constant: 'constant',
+          constant: "constant",
           module: (deps: { constant?: string }) => deps,
-        }).configure(wire => ({
+        }).configure((wire) => ({
           constant: {
             disabled: true,
           },
           module: {
             config: {
-              constant: wire.from('constant').optional
-            }
-          }
+              constant: wire.from("constant").optional,
+            },
+          },
         }));
 
         expect(configuredSystem).not.toThrow();
@@ -400,66 +404,70 @@ describe("system", () => {
         expect(result.instance.module.constant).toBeUndefined();
       });
 
-      it('should allow map one InputWire to another', () => {
+      it("should allow map one InputWire to another", () => {
         const configuredSystem = createSystem({
-          configTime: new Date('2020-04-25T00:00:00.000Z'),
-          module: (deps: {startTime: string}) => deps.startTime,
-        }).configure(wire => ({
+          configTime: new Date("2020-04-25T00:00:00.000Z"),
+          module: (deps: { startTime: string }) => deps.startTime,
+        }).configure((wire) => ({
           module: {
             config: {
-              startTime: wire.from('configTime').map(date => date.toISOString()),
+              startTime: wire
+                .from("configTime")
+                .map((date) => date.toISOString()),
             },
           },
         }));
 
         const result = configuredSystem().instance.module;
 
-        expect(result).toBe('2020-04-25T00:00:00.000Z')
+        expect(result).toBe("2020-04-25T00:00:00.000Z");
       });
 
-      describe('with sockets', () => {
-        it('should allow to chain multiple maps together', () => {
+      describe("with sockets", () => {
+        it("should allow to chain multiple maps together", () => {
           const configuredSystem = createSystem({
             constant: 10,
-            module: (deps: {something: string}) => deps.something,
-          }).configure(wire => ({
+            module: (deps: { something: string }) => deps.something,
+          }).configure((wire) => ({
             module: {
               config: {
-                something: wire.from('constant')
-                  .map(n => new Array<string>(n).fill('a'))
-                  .map(a => a.join(''))
-                  .map(s => s.toUpperCase())
-              }
-            }
+                something: wire
+                  .from("constant")
+                  .map((n) => new Array<string>(n).fill("a"))
+                  .map((a) => a.join(""))
+                  .map((s) => s.toUpperCase()),
+              },
+            },
           }));
 
           const result = configuredSystem().instance.module;
 
-          expect(result).toBe('AAAAAAAAAA');
+          expect(result).toBe("AAAAAAAAAA");
         });
 
-        it('should resolve array socket to an array value', () => {
+        it("should resolve array socket to an array value", () => {
           const configuredSystem = createSystem({
             socket: createArraySocket<number>(),
             number1: 1,
             number2: 2,
             number3: 3,
-            module: (deps: {arrayOfNums: number[]}) => new Set(deps.arrayOfNums),
-          }).configure(wire => ({
+            module: (deps: { arrayOfNums: number[] }) =>
+              new Set(deps.arrayOfNums),
+          }).configure((wire) => ({
             number1: {
-              inject: { self: wire.into('socket') }
+              inject: { self: wire.into("socket") },
             },
             number2: {
-              inject: { self: wire.into('socket') }
+              inject: { self: wire.into("socket") },
             },
             number3: {
-              inject: { self: wire.into('socket') }
+              inject: { self: wire.into("socket") },
             },
             module: {
               config: {
-                arrayOfNums: wire.from('socket'),
-              }
-            }
+                arrayOfNums: wire.from("socket"),
+              },
+            },
           }));
 
           const result = configuredSystem().instance.module;
@@ -467,21 +475,21 @@ describe("system", () => {
           expect(result).toEqual(new Set([1, 2, 3]));
         });
 
-        it('should allow to map the resolved value of a socket when depending on a socket', () => {
+        it("should allow to map the resolved value of a socket when depending on a socket", () => {
           const configuredSystem = createSystem({
             socket: createArraySocket<number>(),
             number1: 1,
             number2: 2,
             number3: 3,
-            module: (deps: {socketLength: number}) => deps.socketLength,
-          }).configure(wire => ({
-            number1: { inject: { self: wire.into('socket') } },
-            number2: { inject: { self: wire.into('socket') } },
-            number3: { inject: { self: wire.into('socket') } },
+            module: (deps: { socketLength: number }) => deps.socketLength,
+          }).configure((wire) => ({
+            number1: { inject: { self: wire.into("socket") } },
+            number2: { inject: { self: wire.into("socket") } },
+            number3: { inject: { self: wire.into("socket") } },
             module: {
               config: {
-                socketLength: wire.from('socket').map(arr => arr.length),
-              }
+                socketLength: wire.from("socket").map((arr) => arr.length),
+              },
             },
           }));
 
@@ -492,12 +500,12 @@ describe("system", () => {
       });
     });
 
-
-
     describe("order of initialization", () => {
-      function getOrderOfInitializationForDeps(edges: readonly [string, string][]) {
+      function getOrderOfInitializationForDeps(
+        edges: readonly [string, string][]
+      ) {
         const order: string[] = [];
-        createSystemFromDeps(edges, self => () => order.push(self));
+        createSystemFromDeps(edges, (self) => () => order.push(self));
 
         return order;
       }
@@ -525,40 +533,92 @@ describe("system", () => {
         expect(order).toEqual(["C", "A", "B"]);
       });
 
-      describe('injects', () => {
-        it('should take take value from injects of a module and put it into a socket specified by wire.into', () => {
+      describe("injects", () => {
+        it("should take take value from injects of a module and put it into a socket specified by wire.into", () => {
           const configuredSystem = createSystem({
             socket: createArraySocket<string>(),
-            module: () => createModule(undefined)
-              .withInjects(() => ({
-                test: 'string'
+            module: () =>
+              createModule(undefined).withInjects(() => ({
+                test: "string",
               })),
-          }).configure(wire => ({
+          }).configure((wire) => ({
             module: {
               inject: {
-                test: wire.into('socket'),
-              }
-            }
+                test: wire.into("socket"),
+              },
+            },
           }));
 
           const result = configuredSystem().instance.socket;
 
-          expect(result).toEqual(['string']);
+          expect(result).toEqual(["string"]);
+        });
+
+        it("should allow to inject into multiple sockets by passing an array of OutputWires", () => {
+          const configuredSystem = createSystem({
+            socket1: createArraySocket<string>(),
+            socket2: createArraySocket<string>(),
+            constant: "constant",
+          }).configure((wire) => ({
+            constant: {
+              inject: { self: [wire.into("socket1"), wire.into("socket2")] },
+            },
+          }));
+
+          const result = configuredSystem().instance;
+
+          expect(result.socket1).toEqual(["constant"]);
+          expect(result.socket2).toEqual(["constant"]);
+        });
+
+        it("should throw an error when trying to inject into a disabled socket", () => {
+          const configuredSystem = createSystem({
+            socket: createArraySocket<string>(),
+            constant: "constant",
+          }).configure((wire) => ({
+            socket: { disabled: true },
+            constant: { inject: { self: wire.into("socket") } },
+          }));
+
+          expect(() => configuredSystem()).toThrowErrorMatchingInlineSnapshot(
+            `"Tried to inject a value from \\"constant\\" into \\"socket\\", but Socket \\"socket\\" is disabled"`
+          );
+        });
+
+        it("should throw an error when trying to inject into something other than a socket", () => {
+          const system = createSystem({
+            constant1: "constant",
+            constant2: "constant",
+          });
+
+          expect(() =>
+            system.configure((wire) => ({
+              constant1: {
+                inject: {
+                  // @ts-ignore
+                  self: wire.into("constant2"),
+                },
+              },
+            }))
+          ).toThrowErrorMatchingInlineSnapshot(
+            `"WireFactory.into called with key \\"constant2\\", but \\"constant2\\" is not a Socket in this system. Valid socket keys for this system are []"`
+          );
         });
       });
     });
   });
 
-  describe('system stop', () => {
+  describe("system stop", () => {
     function getOrderOfDestructionForDeps(edges: readonly [string, string][]) {
       const order: string[] = [];
-      const runningSystem = createSystemFromDeps(edges, self => () => createModule(self).withDestructor(() => order.push(self)));
+      const runningSystem = createSystemFromDeps(edges, (self) => () =>
+        createModule(self).withDestructor(() => order.push(self))
+      );
 
       runningSystem.stop();
 
       return order;
     }
-
 
     test("order of destruction should be the reversed dependency order", () => {
       const order1 = getOrderOfDestructionForDeps([["B", "A"]]);
@@ -571,28 +631,28 @@ describe("system", () => {
         ["A", "C"],
       ]);
 
-      expect(order1).toEqual(['B', 'A']);
-      expect(order2).toEqual(['C', 'B', 'A']);
+      expect(order1).toEqual(["B", "A"]);
+      expect(order2).toEqual(["C", "B", "A"]);
       expect(order3).toEqual(["B", "A", "C"]);
     });
 
-    it('should call destructors on modules with destructors', () => {
+    it("should call destructors on modules with destructors", () => {
       const destructor = jest.fn();
       const configuredSystem = createSystem({
-        module1: () => createModule(undefined).withDestructor(destructor)
+        module1: () => createModule(undefined).withDestructor(destructor),
       }).configure(() => ({}));
 
       const runningSystem = configuredSystem();
-      runningSystem.stop()
+      runningSystem.stop();
 
       expect(destructor).toHaveBeenCalledTimes(1);
     });
 
-    it('should not call the destructor on a disabled module', () => {
+    it("should not call the destructor on a disabled module", () => {
       const destructor = jest.fn();
       const configuredSystem = createSystem({
         module1: () => createModule(undefined).withDestructor(destructor),
-      }).configure(() => ({module1: {disabled: true}}));
+      }).configure(() => ({ module1: { disabled: true } }));
 
       const runningSystem = configuredSystem();
       runningSystem.stop();

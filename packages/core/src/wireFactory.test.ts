@@ -32,7 +32,7 @@ describe("WireFactory", () => {
               },
             },
           }))
-        ).toThrowError("WireFactory.in only accepts strings");
+        ).toThrowError("WireFactory.from only accepts strings");
       }
     );
 
@@ -47,7 +47,7 @@ describe("WireFactory", () => {
           },
         }))
       ).toThrowErrorMatchingInlineSnapshot(
-        `"WireFactory.in called with unknown key \\"someRandomKey\\". Valid keys for this system are [\\"constant\\",\\"func\\"]"`
+        `"WireFactory.from called with unknown key \\"someRandomKey\\". Valid keys for this system are [\\"constant\\",\\"func\\"]"`
       );
     });
 
@@ -104,7 +104,7 @@ describe("WireFactory", () => {
           },
         }))
       ).toThrowError(
-        `WireFactory.out only accepts strings, but received ${string}`
+        `WireFactory.into only accepts strings, but received ${string}`
       );
     });
 
@@ -117,7 +117,7 @@ describe("WireFactory", () => {
           },
         }))
       ).toThrowErrorMatchingInlineSnapshot(
-        `"WireFactory.out called with unknown key \\"someRandomKey\\". Valid output keys for this system are [\\"arraySocket\\"]"`
+        `"WireFactory.into called with unknown key \\"someRandomKey\\". Valid output keys for this system are [\\"arraySocket\\"]"`
       );
     });
 
@@ -130,7 +130,7 @@ describe("WireFactory", () => {
           },
         }))
       ).toThrowErrorMatchingInlineSnapshot(
-        `"WireFactory.out called with key \\"otherConstant\\", but \\"otherConstant\\" is not a Socket in this system. Valid output keys for this system are [\\"arraySocket\\"]"`
+        `"WireFactory.into called with key \\"otherConstant\\", but \\"otherConstant\\" is not a Socket in this system. Valid socket keys for this system are [\\"arraySocket\\"]"`
       );
     });
   });
