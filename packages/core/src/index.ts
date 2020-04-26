@@ -233,7 +233,7 @@ export function createSystem<Structure extends {}>(structure: Structure): System
             const validKeys = Object.getOwnPropertyNames(structure).filter(prop => isSocket(structure[prop]));
             throw new Error(`WireFactory.out called with key "${key}", but "${key}" is not a Socket in this system. Valid output keys for this system are ${prettyPrintArray(validKeys)}`)
           }
-          return new OutputWire(key as string, (id: unknown) => id, ...config);
+          return new OutputWire(key as string, ...config);
         }
       };
 
@@ -326,7 +326,7 @@ export function createSystem<Structure extends {}>(structure: Structure): System
             }
 
             if (isSocket(maybeSink)) {
-              context[outputWire.prop] = maybeSink.accept(module, outputWire.mapper(inject), ...outputWire.config);
+              context[outputWire.prop] = maybeSink.accept(module, inject, ...outputWire.config);
             } else {
               throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but "${outputWire.prop}" is not a Socket"`)
             }
