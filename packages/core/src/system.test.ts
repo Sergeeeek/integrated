@@ -604,6 +604,40 @@ describe("system", () => {
             `"WireFactory.into called with key \\"constant2\\", but \\"constant2\\" is not a Socket in this system. Valid socket keys for this system are []"`
           );
         });
+
+        it("should throw an error when something other than an OutputWire is passed as inject target", () => {
+          const configuredSystem = createSystem({
+            constant: "constant",
+          }).configure(() => ({
+            constant: {
+              inject: {
+                // @ts-ignore
+                self: "asdf",
+              },
+            },
+          }));
+
+          expect(() => configuredSystem()).toThrowError(
+            `Wrong value passed to inject.self in module "constant". Please use wire.into to configure injects.`
+          );
+        });
+
+        it('should throw an error if array of something other than OutputWire is paased as inject target', () => {
+          const configuredSystem = createSystem({
+            constant: "constant",
+          }).configure(() => ({
+            constant: {
+              inject: {
+                // @ts-ignore
+                self: ["asfd"],
+              },
+            },
+          }));
+
+          expect(() => configuredSystem()).toThrowError(
+            `Wrong value passed to inject.self in module "constant". Please use wire.into to configure injects.`
+          );
+        });
       });
     });
   });

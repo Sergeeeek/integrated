@@ -131,25 +131,25 @@ function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isS
 
     if (outputs) {
       const addOutput = (outputWire: OutputWire<unknown, unknown[]>) => {
-          const wireProp = outputWire.prop;
+        const wireProp = outputWire.prop;
 
-          // Socket is going to be initialized at '${sinkProp}_empty_init_RESERVED'.
-          // To put a value in a sink module will depend on its start point node.
-          // To make sure all sink values are initialized before the sink is used,
-          // module will be a dependency of sink "end" graph node. if you depend on sink "end",
-          // you can be sure that all things that all SinkRefs for that sink are resolved
-          edges.push([`${wireProp}_empty_init_RESERVED`, moduleName])
-          edges.push([moduleName, wireProp]);
+        // Socket is going to be initialized at '${sinkProp}_empty_init_RESERVED'.
+        // To put a value in a sink module will depend on its start point node.
+        // To make sure all sink values are initialized before the sink is used,
+        // module will be a dependency of sink "end" graph node. if you depend on sink "end",
+        // you can be sure that all things that all SinkRefs for that sink are resolved
+        edges.push([`${wireProp}_empty_init_RESERVED`, moduleName])
+        edges.push([moduleName, wireProp]);
       }
       Object.getOwnPropertyNames(outputs).forEach(prop => {
         const outputWireOrArray = outputs[prop];
 
-        if (Array.isArray(outputWireOrArray)) {
+        if (Array.isArray(outputWireOrArray) && outputWireOrArray.every(isOutputWire)) {
           outputWireOrArray.forEach(addOutput);
-        } else {
-          // TypeScript can't infer that if it's not an array
-          // then it's definitely OutputWire. Weird
+        } else if (isOutputWire(outputWireOrArray)) {
           addOutput(outputWireOrArray as OutputWire<unknown, unknown[]>);
+        } else {
+          throw new Error(`Wrong value passed to inject.${prop} in module "${moduleName}". Please use wire.into to configure injects.`)
         }
       });
     }
@@ -386,11 +386,6 @@ export function createSystem<Structure extends {}>(structure: Structure): System
                 return;
               }
               const outputWireOrArray = injectConfig[key];
-
-              const isValidConfig = isOutputWire(outputWireOrArray) || (Array.isArray(outputWireOrArray) && outputWireOrArray.every(out => isOutputWire(out)));
-              if (!isValidConfig) {
-                throw new Error(`Wrong value passed to inject.${key} in module "${module}". Please use wire.into to configure injects.`);
-              }
 
               if (Array.isArray(outputWireOrArray)) {
                 outputWireOrArray.forEach(wire => acceptInject(wire, injects[key]));
