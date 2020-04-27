@@ -20,3 +20,24 @@ exports[`system system start dependency resolution should give an error when you
 "Module \\"module\\" has a dependency \\"constant\\" at config path \\"module.config.constant\\", but that dependency is disabled through config and InputWire is not optional.
 Please remove the disabled flag from \\"constant\\" or make the dependency at \\"module.config.constant\\" optional."
 `;
+
+exports[`system system start order of initialization injects should throw an error when OutputWire is not provided for an inject 1`] = `
+"Tried to inject a value from \\"module\\", but either the value was not provided or inject destination was not configured.
+See error above for more details."
+`;
+
+exports[`system system start order of initialization injects should throw an error when OutputWire is not provided for an inject 2`] = `
+Array [
+  Array [
+    "Provided by module: ",
+    Object {
+      "self": undefined,
+      "test": "adsf",
+    },
+  ],
+  Array [
+    "Found in config",
+    Object {},
+  ],
+]
+`;

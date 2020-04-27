@@ -1,42 +1,6 @@
 import { InputWire } from "./InputWire";
 import { createSystem, createModule, createArraySocket } from ".";
-import { flatten } from "./util";
-
-function createSystemFromDeps(
-  edges: readonly [string, string][],
-  moduleFactory: (self: string) => (deps: { [key: string]: unknown }) => unknown
-) {
-  const structure: {
-    [key: string]: (deps: { [key: string]: unknown }) => unknown;
-  } = {};
-  const allNodes = new Set(flatten(edges));
-  for (const node of allNodes) {
-    structure[node] = moduleFactory(node);
-  }
-
-  const result = createSystem(structure).configure((wire) => {
-    const config: {
-      [key: string]: { config: { [key: string]: unknown } };
-    } = {};
-
-    // From dependent to dependency,
-    // e.g. if A depends on B, then from = A and to = B
-    for (const [from, to] of edges) {
-      const configFrom = config[from] ?? {};
-      config[from] = {
-        ...configFrom,
-        config: {
-          ...configFrom.config,
-          [to]: wire.from(to),
-        },
-      };
-    }
-
-    return config;
-  })();
-
-  return result;
-}
+import { createSystemFromDeps, withMemoryErrorLogger } from './testUtil';
 
 describe("system", () => {
   describe("createSystem", () => {
@@ -603,6 +567,24 @@ describe("system", () => {
           ).toThrowErrorMatchingInlineSnapshot(
             `"WireFactory.into called with key \\"constant2\\", but \\"constant2\\" is not a Socket in this system. Valid socket keys for this system are []"`
           );
+        });
+
+        it("should throw an error when OutputWire is not provided for an inject", () => {
+          const {stdErr} = withMemoryErrorLogger(() => {
+            const configuredSystem = createSystem({
+              module: () =>
+                createModule(undefined).withInjects(() => ({ test: "adsf" })),
+            }).configure(() => ({
+              module: {
+                //@ts-ignore
+                inject: {},
+              },
+            }));
+
+            expect(() => configuredSystem()).toThrowErrorMatchingSnapshot();
+          });
+
+          expect(stdErr).toMatchSnapshot();
         });
 
         it("should throw an error when something other than an OutputWire is passed as inject target", () => {
