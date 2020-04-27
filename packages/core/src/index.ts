@@ -75,10 +75,10 @@ type SystemConfig<Structure> = PropagateOptional<{
     }>>
   }>;
 
-export interface ConfiguredSystem<Structure> {
+export interface ConfiguredSystem<Structure> extends Module<never, {}> {
   readonly definition: Structure;
   readonly config: SystemConfig<Structure>;
-  (): ModuleWithDestructor<MapToResultTypes<Structure>, never>;
+  (): ModuleWithDestructor<MapToResultTypes<Structure>, {}>;
 };
 
 type OnlySocketKeys<Structure> = {

@@ -676,4 +676,25 @@ describe("system", () => {
       expect(destructor).not.toHaveBeenCalled();
     });
   });
+
+  it('should be usable as a module in a different system', () => {
+    const system1 = createSystem({
+      constant: 'constant'
+    }).configure(() => ({}));
+
+    const system2 = createSystem({
+      system1,
+      module: (deps: {constant: string}) => deps.constant,
+    }).configure(wire => ({
+      module: {
+        config: {
+          constant: wire.from('system1').map(sys => sys.constant),
+        }
+      }
+    }));
+
+    const result = system2().instance.module;
+
+    expect(result).toBe('constant');
+  });
 });

@@ -57,8 +57,8 @@ export function createArraySocket<T>(entries: {[key: string]: {value: T, config?
         }
 
         return [
-          config.before ? [node, config.before.prop] : null,
-          config.after ? [config.after.prop, node] : null,
+          config.before && config.before.prop in entries ? [node, config.before.prop] : null,
+          config.after && config.after.prop in entries ? [config.after.prop, node] : null,
         ].filter(v => v !== null) as [string, string][];
       }));
 
