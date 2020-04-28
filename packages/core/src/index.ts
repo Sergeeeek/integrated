@@ -114,8 +114,25 @@ type WireFactory<Structure> = {
   into<Key extends keyof GetSockets<Structure>>(socket: Key, ...config: GetSockets<Structure>[Key]['config']): OutputWire<GetSockets<Structure>[Key]['value'], GetSockets<Structure>[Key]['config']>;
 };
 
+/**
+ * System is the aggregation of modules, that allows to declare dependnecies between
+ * those modules through configuration.
+ */
 export type System<Structure> = {
+  /**
+   * Configure takes a closure which should return the system configuration.
+   *
+   * @param closure - A function that takes a {@link WireFactory} and returns a
+   *                  config.
+   * @returns The configured system that can be started.
+   */
   configure(
+    /**
+     * @param wire - WireFactory instance for this system. Use {@link WireFactory#from}
+     *               and {@link WireFactory#into} to define dependencies between modules
+     *               declaratively.
+     * @return A config for this system
+     */
     closure: (wire: WireFactory<Structure>) => SystemConfig<Structure>
   ): ConfiguredSystem<Structure>;
 };
@@ -201,6 +218,54 @@ function validateConfig<Structure>(structure: Structure, config: SystemConfig<St
   }
 }
 
+/**
+ * Creates a system that can be configured later.
+ *
+ * @remarks
+ *
+ * This is the main entry point for working with this library. Your app, or some
+ * part of your app will likely be defined as a system.
+ *
+ * The structure of a system is a plain JS object, that defines everything that
+ * exists in this system. Check out this imaginary example:
+ * ```ts
+ * const system = createSystem({
+ *   dbConnection: PostgresDBConnectorModule,
+ *   apiServer: APIModule,
+ * });
+ * ```
+ * In this example we have defined a simple system with two Modules: dbConnection
+ * and apiServer. Having them in one system allows them to depend on each other
+ * when configuring the system:
+ * ```ts
+ * system.configure(wire => ({
+ *   apiServer: {
+ *     config: {
+ *       dbConnection: wire.from('dbConnection')
+ *     }
+ *   }
+ * }));
+ * ```
+ * Code above means that dbConnection will be passed to the apiServer's init function
+ * when system starts. Here's how APIModule could be defined:
+ * ```ts
+ * import express from 'express';
+ *
+ * function ExpressModule(
+ *   config: {
+ *     dbConnection: DBConnection,
+ *     port?: 3000
+ *   }
+ * ) {
+ *   const app = express();
+ *   // Pass dbConnection somewhere
+ *   // ...
+ *   app.listen(config.port, () => console.log(`Example app listening at http://localhost:${port}`));
+ * }
+ * ```
+ *
+ * @param structure - A definition of modules for this system
+ */
 export function createSystem<Structure extends {}>(structure: Structure): System<Structure> {
   if (typeof structure !== 'object' || structure === null || Array.isArray(structure)) {
     throw new Error('createSystem only accepts objects');
