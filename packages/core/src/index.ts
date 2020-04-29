@@ -2,9 +2,8 @@ import * as toposort from 'toposort';
 
 import { InputWire, isInputWire } from './InputWire';
 import {
+  InternalModule,
   Module,
-  ModuleDefinition,
-  ModuleWithDestructor,
   createModule,
   isModule
 } from './Module';
@@ -75,10 +74,25 @@ type SystemConfig<Structure> = PropagateOptional<{
     }>>
   }>;
 
+/**
+ * A system which is configured and ready to start.
+ * You can inspect its definition and config.
+ */
 export interface ConfiguredSystem<Structure> extends Module<never, {}> {
+  /**
+   * This is the system definition that was passed to createSystem in case you need it.
+   */
   readonly definition: Structure;
+  /**
+   * This is the system config that was returned from the configuration closure.
+   */
   readonly config: SystemConfig<Structure>;
-  (): ModuleWithDestructor<MapToResultTypes<Structure>, {}>;
+  /**
+   * ConfiguredSystem is also a function that you can call. Calling it will start the system.
+   *
+   * @returns A module that can be stopped
+   */
+  (): Module<MapToResultTypes<Structure>, {}>;
 };
 
 type OnlySocketKeys<Structure> = {
@@ -191,7 +205,7 @@ function prettyPrintArray(arr: readonly string[]): string {
 
 const allowedModuleConfigKeys = new Set(['config', 'inject', 'disabled']);
 
-function validateConfig<Structure>(structure: Structure, config: SystemConfig<Structure>) {
+function validateConfig<Structure>(structure: Structure, config: SystemConfig<Structure>): void {
   if (typeof config !== 'object' || config === null || Array.isArray(config)) {
     throw new Error('System configuration closure should return a plain object');
   }
@@ -264,6 +278,9 @@ function validateConfig<Structure>(structure: Structure, config: SystemConfig<St
  * }
  * ```
  *
+ * Note that you don't need to pass any type info to createSystem (in most cases),
+ * because TypeScript can infer everything.
+ *
  * @param structure - A definition of modules for this system
  */
 export function createSystem<Structure extends {}>(structure: Structure): System<Structure> {
@@ -271,7 +288,7 @@ export function createSystem<Structure extends {}>(structure: Structure): System
     throw new Error('createSystem only accepts objects');
   }
   return {
-    configure(closure) {
+    configure(closure): ConfiguredSystem<Structure> {
       if (typeof closure !== 'function') {
         throw new Error('System.configure only accepts functions');
       }
@@ -337,7 +354,7 @@ export function createSystem<Structure extends {}>(structure: Structure): System
         const sortedModules = toposort.array(nodes, dependencyGraph);
 
         const context: Partial<MapToResultTypes<Structure>> = {};
-        const initializedModules: {[key: string]: {stop?(): void; inject?(): unknown}} = {};
+        const initializedModules: {[key: string]: {stop(): void; inject(): unknown}} = {};
 
         for (const moduleName of sortedModules) {
           const module = moduleName.replace(/_empty_init_RESERVED$/, '');
@@ -411,9 +428,6 @@ export function createSystem<Structure extends {}>(structure: Structure): System
 
               initializedModules[module] = {stop, inject};
               context[module] = instance;
-
-              if (inject) {
-              }
             } else {
               context[module] = initialized;
             }
@@ -421,20 +435,20 @@ export function createSystem<Structure extends {}>(structure: Structure): System
             context[module] = currentModule as unknown;
           }
 
-          if (initializedModules[module] && initializedModules[module].inject || moduleConfig && moduleConfig.inject && moduleConfig.inject.self) {
+          if (initializedModules[module] || (moduleConfig && moduleConfig.inject && moduleConfig.inject.self)) {
             const inject = () => {
-              if (initializedModules[module] && initializedModules[module].inject) {
-                const result = initializedModules[module].inject!();
-                if (typeof result === 'object') {
+              if (initializedModules[module]) {
+                const result = initializedModules[module].inject();
+                if (typeof result === 'object' && result !== null && result !== undefined) {
                   return result;
                 }
               }
             };
             const injects = {
-              ...(inject ? inject() : undefined),
+              ...inject(),
               self: context[module],
             };
-            const injectConfig = moduleDepsMap[module].outputs;
+            const injectConfig = moduleDepsMap[module] && moduleDepsMap[module].outputs || {};
 
             const allInjects = new Set([
               ...Object.getOwnPropertyNames(injects),
@@ -476,7 +490,8 @@ export function createSystem<Structure extends {}>(structure: Structure): System
                   initializedModules[moduleName].stop!();
                 }
               }
-          });
+          })
+          .build();
       };
 
       Object.assign(configuredSystem, {
@@ -493,4 +508,4 @@ export function createSystem<Structure extends {}>(structure: Structure): System
 export { Socket, isSocket, createArraySocket, ArraySocket, ArraySocketConfig };
 
 // Module exports
-export { Module, createModule, isModule, ModuleDefinition }
+export { Module, createModule }

@@ -214,7 +214,7 @@ describe("system", () => {
           (deps: { dependency: string }) => deps.dependency
         );
         const configuredSystem = createSystem({
-          module1: () => createModule("module1Instance"),
+          module1: () => createModule("module1Instance").build(),
           module2,
         }).configure((wire) => ({
           module2: {
@@ -502,9 +502,11 @@ describe("system", () => {
           const configuredSystem = createSystem({
             socket: createArraySocket<string>(),
             module: () =>
-              createModule(undefined).withInjects(() => ({
-                test: "string",
-              })),
+              createModule(undefined)
+                .withInjects(() => ({
+                  test: "string",
+                }))
+                .build(),
           }).configure((wire) => ({
             module: {
               inject: {
@@ -573,7 +575,7 @@ describe("system", () => {
           const {stdErr} = withMemoryErrorLogger(() => {
             const configuredSystem = createSystem({
               module: () =>
-                createModule(undefined).withInjects(() => ({ test: "adsf" })),
+                createModule(undefined).withInjects(() => ({ test: "adsf" })).build(),
             }).configure(() => ({
               module: {
                 //@ts-ignore
@@ -628,7 +630,7 @@ describe("system", () => {
     function getOrderOfDestructionForDeps(edges: readonly [string, string][]) {
       const order: string[] = [];
       const runningSystem = createSystemFromDeps(edges, (self) => () =>
-        createModule(self).withDestructor(() => order.push(self))
+        createModule(self).withDestructor(() => order.push(self)).build()
       );
 
       runningSystem.stop();
@@ -655,7 +657,7 @@ describe("system", () => {
     it("should call destructors on modules with destructors", () => {
       const destructor = jest.fn();
       const configuredSystem = createSystem({
-        module1: () => createModule(undefined).withDestructor(destructor),
+        module1: () => createModule(undefined).withDestructor(destructor).build(),
       }).configure(() => ({}));
 
       const runningSystem = configuredSystem();
@@ -667,7 +669,7 @@ describe("system", () => {
     it("should not call the destructor on a disabled module", () => {
       const destructor = jest.fn();
       const configuredSystem = createSystem({
-        module1: () => createModule(undefined).withDestructor(destructor),
+        module1: () => createModule(undefined).withDestructor(destructor).build(),
       }).configure(() => ({ module1: { disabled: true } }));
 
       const runningSystem = configuredSystem();
