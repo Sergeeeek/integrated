@@ -1,6 +1,6 @@
 import * as React from 'react';
 import * as ReactDOM from 'react-dom';
-import {createModule} from '@ts-module-system/core';
+import {createModule} from '@integrated/core';
 
 export interface ReactConfig {
   App: React.JSXElementConstructor<{}>,

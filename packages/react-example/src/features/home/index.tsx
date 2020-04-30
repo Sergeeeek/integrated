@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { createModule } from '@ts-module-system/core';
+import { createModule } from '@integrated/core';
 
 function HomeScreen() {
   return <>Home screen, wow</>

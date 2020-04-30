@@ -1,5 +1,5 @@
 {
-  "name": "@ts-module-system/react-web",
+  "name": "@integrated/react-web",
   "amdName": "TSModuleSystemReact",
   "version": "1.0.0",
   "source": "src/index.tsx",
@@ -10,7 +10,7 @@
   "unpkg": "dist/index.umd.js",
   "license": "MIT",
   "dependencies": {
-    "@ts-module-system/core": "^1.0.0"
+    "@integrated/core": "^1.0.0"
   },
   "devDependencies": {
     "@typescript-eslint/eslint-plugin": "^2.24.0",
@@ -27,7 +27,7 @@
     "react-dom": ">=15.x"
   },
   "scripts": {
-    "dev": "microbundle --no-compress --watch --globals react=React,@ts-module-system/core=TSModuleSystemCore",
-    "build": "microbundle --globals react=React,@ts-module-system/core=TSModuleSystemCore"
+    "dev": "microbundle --no-compress --watch --globals react=React,@integrated/core=TSModuleSystemCore",
+    "build": "microbundle --globals react=React,@integrated/core=TSModuleSystemCore"
   }
 }

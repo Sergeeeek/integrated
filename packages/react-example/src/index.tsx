@@ -1,7 +1,7 @@
-import { ReactMiddlewareModule } from '@ts-module-system/react-middleware';
-import { ReactRouterModule } from '@ts-module-system/react-router';
-import { ReactWebModule } from '@ts-module-system/react-web';
-import {createSystem, createArraySocket} from '@ts-module-system/core';
+import { ReactMiddlewareModule } from '@integrated/react-middleware';
+import { ReactRouterModule } from '@integrated/react-router';
+import { ReactWebModule } from '@integrated/react-web';
+import {createSystem, createArraySocket} from '@integrated/core';
 import * as React from 'react';
 
 import { RouteProps } from 'react-router';

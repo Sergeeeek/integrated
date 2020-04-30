@@ -1,6 +1,6 @@
 {
-  "name": "@ts-module-system/core",
-  "amdName": "TSModuleSystemCore",
+  "name": "@integrated/core",
+  "amdName": "IntegratedCore",
   "version": "1.0.0",
   "source": "src/index.ts",
   "main": "dist/index.js",

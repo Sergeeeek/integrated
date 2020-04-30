@@ -1,5 +1,5 @@
 {
-  "name": "@ts-module-system/react-example",
+  "name": "@integrated/react-example",
   "version": "1.0.0",
   "main": "index.js",
   "license": "MIT",
@@ -10,10 +10,10 @@
     "typescript": "^3.8.3"
   },
   "dependencies": {
-    "@ts-module-system/core": "1.0.0",
-    "@ts-module-system/react-middleware": "1.0.0",
-    "@ts-module-system/react-web": "1.0.0",
-    "@ts-module-system/react-router": "1.0.0",
+    "@integrated/core": "1.0.0",
+    "@integrated/react-middleware": "1.0.0",
+    "@integrated/react-web": "1.0.0",
+    "@integrated/react-router": "1.0.0",
     "react-router-dom": "5.1.2",
     "react": "^16.13.1",
     "react-dom": "^16.13.1"
