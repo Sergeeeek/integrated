@@ -19,5 +19,6 @@ export function TimeoutAlertModule({timeout, alert}: {timeout: number, alert: st
   return createModule(TimeoutAlertMiddleware)
     .withInjects(() => ({
       middleware: TimeoutAlertMiddleware,
-    }));
+    }))
+    .build();
 };

@@ -24,4 +24,5 @@ export function ReactWebModule({selector, App}: ReactConfig) {
     .withDestructor(() => {
       ReactDOM.unmountComponentAtNode(container);
     })
+    .build();
 }

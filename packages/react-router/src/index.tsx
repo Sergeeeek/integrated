@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { createModule } from '@integrated/core';
 import {BrowserRouter, HashRouter, RouteProps, MemoryRouter, Switch} from 'react-router-dom';
 
 type RouterType = 'memory' | 'browser' | 'hash';
@@ -44,5 +43,5 @@ export function ReactRouterModule({
     );
   }
 
-  return createModule(ReactRouter);
+  return ReactRouter;
 };

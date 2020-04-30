@@ -1,5 +1,4 @@
 import * as React from 'react';
-import {createModule} from '@integrated/core'
 
 export type ReactMiddleware = React.ComponentType<{children?: React.ReactNode}>;
 
@@ -16,5 +15,5 @@ export function ReactMiddlewareModule({middleware, Child}: ReactMiddlewareModule
     return <>{nested}</>;
   });
 
-  return createModule(ReactMiddleware);
+  return ReactMiddleware;
 }

@@ -12,6 +12,7 @@ export function SomeProviderModule<V>() {
       }
     }).withInjects(() => ({
         middleware: SomeProvider,
-    }));
+    }))
+    .build();
   };
 }
