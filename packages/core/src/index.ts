@@ -353,147 +353,169 @@ export function createSystem<Structure extends {}>(structure: Structure): System
 
         const sortedModules = toposort.array(nodes, dependencyGraph);
 
+        /**
+         * Track how many modules are initialized, so we can destroy them properly in case system fails to start
+         */
+        let completedModulesIndex = 0;
+
         const context: Partial<MapToResultTypes<Structure>> = {};
         const initializedModules: {[key: string]: {stop(): void; inject(): unknown}} = {};
 
-        for (const moduleName of sortedModules) {
-          const module = moduleName.replace(/_empty_init_RESERVED$/, '');
+        try {
+          for (const moduleName of sortedModules) {
+            const module = moduleName.replace(/_empty_init_RESERVED$/, '');
 
-          // If context already has a module, that means that it's a sink, because sinks appear in sortedModules twice
-          if (context[module]) {
-            context[module] = context[module].resolve()
-            continue;
-          }
-          const currentModule = structure[module];
-          const moduleConfig = weakTypeConfig[module];
-          if (moduleConfig && moduleConfig.disabled) {
-            continue;
-          }
-          let deps: unknown;
-
-          // Resolving InputWires to real deps
-          if (moduleConfig && 'config' in moduleConfig) {
-            deps = moduleConfig.config;
-
-            for (const dep of moduleDepsMap[module as string].inputs) {
-              const {path, value: inputWire} = dep;
-              const depConfig = weakTypeConfig[inputWire.prop];
-
-              if (depConfig && depConfig.disabled && !inputWire.isOptional) {
-                const prettyDependencyPath = [module, 'config', ...path].join('.');
-                throw new Error(`Module "${module}" has a dependency "${inputWire.prop}" at config path "${prettyDependencyPath}",`
-                + ` but that dependency is disabled through config and InputWire is not optional.`
-                + `\nPlease remove the disabled flag from "${inputWire.prop}" or make the dependency at "${prettyDependencyPath}" optional.`);
-              }
-              const depValue = inputWire.mapper(context[inputWire.prop]);
-
-              if (isSocket(depValue)) {
-                throw new Error(
-                  'Socket wasn\'t resolved before a dependant module started to initialize.'
-                  + '\nSomething is wrong with the world.'
-                  + `\nDependant module is "${module}". Socket is "${inputWire.prop}"`
-                );
-              } else {
-                deps = deepSet(deps, path, depValue);
-              }
+            // If context already has a module, that means that it's a sink, because sinks appear in sortedModules twice
+            if (context[module]) {
+              context[module] = context[module].resolve()
+              continue;
             }
-          }
-
-          const acceptInject = (outputWire: OutputWire<unknown, unknown[]>, inject: unknown) => {
-            const maybeSink = context[outputWire.prop];
-            const sinkConfig = weakTypeConfig[outputWire.prop];
-
-            if (sinkConfig && sinkConfig.disabled) {
-              throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but Socket "${outputWire.prop}" is disabled`)
+            const currentModule = structure[module];
+            const moduleConfig = weakTypeConfig[module];
+            if (moduleConfig && moduleConfig.disabled) {
+              continue;
             }
+            let deps: unknown;
 
-            if (isSocket(maybeSink)) {
-              context[outputWire.prop] = maybeSink.accept(module, inject, ...outputWire.config);
-            } else {
-              throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but "${outputWire.prop}" is not a Socket"`)
-            }
-          };
+            // Resolving InputWires to real deps
+            if (moduleConfig && 'config' in moduleConfig) {
+              deps = moduleConfig.config;
 
-          //
-          // Starting modules
-          //
+              for (const dep of moduleDepsMap[module as string].inputs) {
+                const {path, value: inputWire} = dep;
+                const depConfig = weakTypeConfig[inputWire.prop];
 
-          if (isSocket(currentModule)) {
-            context[module] = currentModule;
-          } else if (typeof currentModule === 'function') {
-            const initialized = currentModule(deps);
+                if (depConfig && depConfig.disabled && !inputWire.isOptional) {
+                  const prettyDependencyPath = [module, 'config', ...path].join('.');
+                  throw new Error(`Module "${module}" has a dependency "${inputWire.prop}" at config path "${prettyDependencyPath}",`
+                                  + ` but that dependency is disabled through config and InputWire is not optional.`
+                                  + `\nPlease remove the disabled flag from "${inputWire.prop}" or make the dependency at "${prettyDependencyPath}" optional.`);
+                }
+                const depValue = inputWire.mapper(context[inputWire.prop]);
 
-            if (isModuleBuilder(initialized)) {
-              throw new Error(`Module "${module}" was resolved to a ModuleBuilder. Please check that you call .build()`);
-            }
-
-            if (isModule(initialized)) {
-              const {instance, stop, inject} = initialized;
-
-              initializedModules[module] = {stop, inject};
-              context[module] = instance;
-            } else {
-              context[module] = initialized;
-            }
-          } else {
-            context[module] = currentModule as unknown;
-          }
-
-          if (initializedModules[module] || (moduleConfig && moduleConfig.inject && moduleConfig.inject.self)) {
-            const inject = () => {
-              if (initializedModules[module]) {
-                const result = initializedModules[module].inject();
-                if (typeof result === 'object' && result !== null && result !== undefined) {
-                  return result;
+                if (isSocket(depValue)) {
+                  throw new Error(
+                    'Socket wasn\'t resolved before a dependant module started to initialize.'
+                    + '\nSomething is wrong with the world.'
+                    + `\nDependant module is "${module}". Socket is "${inputWire.prop}"`
+                  );
+                } else {
+                  deps = deepSet(deps, path, depValue);
                 }
               }
-            };
-            const injects = {
-              ...inject(),
-              self: context[module],
-            };
-            const injectConfig = moduleDepsMap[module] && moduleDepsMap[module].outputs || {};
+            }
 
-            const allInjects = new Set([
-              ...Object.getOwnPropertyNames(injects),
-              ...Object.getOwnPropertyNames(injectConfig)
-            ]);
+            const acceptInject = (outputWire: OutputWire<unknown, unknown[]>, inject: unknown) => {
+              const maybeSink = context[outputWire.prop];
+              const sinkConfig = weakTypeConfig[outputWire.prop];
 
-            allInjects.forEach(key => {
-              if (!(injects instanceof Object && key in injects && injectConfig && (key in injectConfig || key === 'self'))) {
-                console.error('Provided by module: ', injects);
-                console.error('Found in config', injectConfig);
-                throw new Error(`Tried to inject a value from "${module}", but either the value was not provided or inject destination was not configured.\nSee error above for more details.`);
+              if (sinkConfig && sinkConfig.disabled) {
+                throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but Socket "${outputWire.prop}" is disabled`)
               }
-              if (key === 'self' && injectConfig.self === undefined || injectConfig.self === null) {
-                return;
-              }
-              const outputWireOrArray = injectConfig[key];
 
-              if (Array.isArray(outputWireOrArray)) {
-                outputWireOrArray.forEach(wire => acceptInject(wire, injects[key]));
+              if (isSocket(maybeSink)) {
+                context[outputWire.prop] = maybeSink.accept(module, inject, ...outputWire.config);
               } else {
-                const outputWire = outputWireOrArray as OutputWire<unknown, unknown[]>;
-
-                acceptInject(outputWire, injects[key]);
+                throw new Error(`Tried to inject a value from "${module}" into "${outputWire.prop}", but "${outputWire.prop}" is not a Socket"`)
               }
-            });
+            };
+
+            //
+            // Starting modules
+            //
+
+            if (isSocket(currentModule)) {
+              context[module] = currentModule;
+            } else if (typeof currentModule === 'function') {
+              const initialized = currentModule(deps);
+
+              if (isModuleBuilder(initialized)) {
+                throw new Error(`Module "${module}" was resolved to a ModuleBuilder. Please check that you call .build()`);
+              }
+
+              if (isModule(initialized)) {
+                const {instance, stop, inject} = initialized;
+
+                initializedModules[module] = {stop, inject};
+                context[module] = instance;
+              } else {
+                context[module] = initialized;
+              }
+            } else {
+              context[module] = currentModule as unknown;
+            }
+
+            completedModulesIndex++;
+
+            if (initializedModules[module] || (moduleConfig && moduleConfig.inject && moduleConfig.inject.self)) {
+              const inject = () => {
+                if (initializedModules[module]) {
+                  const result = initializedModules[module].inject();
+                  if (typeof result === 'object' && result !== null && result !== undefined) {
+                    return result;
+                  }
+                }
+              };
+              const injects = {
+                ...inject(),
+                self: context[module],
+              };
+              const injectConfig = moduleDepsMap[module] && moduleDepsMap[module].outputs || {};
+
+              const allInjects = new Set([
+                ...Object.getOwnPropertyNames(injects),
+                ...Object.getOwnPropertyNames(injectConfig)
+              ]);
+
+              allInjects.forEach(key => {
+                if (!(injects instanceof Object && key in injects && injectConfig && (key in injectConfig || key === 'self'))) {
+                  console.error('Provided by module: ', injects);
+                  console.error('Found in config', injectConfig);
+                  throw new Error(`Tried to inject a value from "${module}", but either the value was not provided or inject destination was not configured.\nSee error above for more details.`);
+                }
+                if (key === 'self' && injectConfig.self === undefined || injectConfig.self === null) {
+                  return;
+                }
+                const outputWireOrArray = injectConfig[key];
+
+                if (Array.isArray(outputWireOrArray)) {
+                  outputWireOrArray.forEach(wire => acceptInject(wire, injects[key]));
+                } else {
+                  const outputWire = outputWireOrArray as OutputWire<unknown, unknown[]>;
+
+                  acceptInject(outputWire, injects[key]);
+                }
+              });
+            }
           }
+        } catch (err) {
+          for (let i = completedModulesIndex - 1; i >= 0; i--) {
+            const moduleName = sortedModules[i];
+
+            if (weakTypeConfig[moduleName] && weakTypeConfig[moduleName].disabled) {
+              continue;
+            }
+            if (initializedModules[moduleName] && initializedModules[moduleName].stop) {
+              initializedModules[moduleName].stop();
+            }
+          }
+
+          throw err;
         }
         const fullContext = context as MapToResultTypes<Structure>;
 
         return createModule(fullContext)
           .withDestructor(() => {
-              const reverseSortedModules = sortedModules.reverse();
+            for (let i = sortedModules.length - 1; i >= 0; i--) {
+              const moduleName = sortedModules[i];
 
-              for (const moduleName of reverseSortedModules) {
-                if (weakTypeConfig[moduleName] && weakTypeConfig[moduleName].disabled) {
-                  continue;
-                }
-                if (initializedModules[moduleName] && initializedModules[moduleName].stop) {
-                  initializedModules[moduleName].stop!();
-                }
+              if (weakTypeConfig[moduleName] && weakTypeConfig[moduleName].disabled) {
+                continue;
               }
+              if (initializedModules[moduleName] && initializedModules[moduleName].stop) {
+                initializedModules[moduleName].stop!();
+              }
+            }
           })
           .build();
       };

@@ -173,6 +173,35 @@ describe("system", () => {
       );
     });
 
+    it('should stop initialized modules if system encountered an error while starting', () => {
+      const destructor = jest.fn();
+      const configuredSystem = createSystem({
+        normalModule: () => createModule('test').withDestructor(destructor).build(),
+        failingModule: (deps: {normalModule: string}): string => {
+          throw new Error('Test error');
+        },
+        afterFailingModule: (deps: {failingModule: string}) => {
+          return createModule('shouldNotGetThere').withDestructor(destructor).build();
+        },
+      }).configure(wire => ({
+        failingModule: {
+          config: {
+            normalModule: wire.from('normalModule'),
+          }
+        },
+        afterFailingModule: {
+          config: {
+            failingModule: wire.from('failingModule')
+          }
+        }
+      }));
+
+      expect(() => configuredSystem()).toThrow();
+
+      // Called for normalModule, not called for afterFailingModule
+      expect(destructor).toHaveBeenCalledTimes(1);
+    });
+
     describe("dependency resolution", () => {
       it("should resolve a wire.from to the value of the constant module", () => {
         const module2 = jest.fn(
