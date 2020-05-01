@@ -1,6 +1,6 @@
 import { InputWire } from "./InputWire";
 import { createSystem, createModule, createArraySocket } from ".";
-import { createSystemFromDeps, withMemoryErrorLogger } from './testUtil';
+import { createSystemFromDeps, withMemoryErrorLogger } from "./testUtil";
 
 describe("system", () => {
   describe("createSystem", () => {
@@ -161,6 +161,16 @@ describe("system", () => {
       configuredSystem();
 
       expect(structure.module1).not.toHaveBeenCalled();
+    });
+
+    it("should throw an error when you don't call module.build() on a module builder", () => {
+      const configuredSystem = createSystem({
+        module: () => createModule("test"),
+      }).configure(() => ({}));
+
+      expect(() => configuredSystem()).toThrowErrorMatchingInlineSnapshot(
+        `"Module \\"module\\" was resolved to a ModuleBuilder. Please check that you call .build()"`
+      );
     });
 
     describe("dependency resolution", () => {
@@ -572,10 +582,12 @@ describe("system", () => {
         });
 
         it("should throw an error when OutputWire is not provided for an inject", () => {
-          const {stdErr} = withMemoryErrorLogger(() => {
+          const { stdErr } = withMemoryErrorLogger(() => {
             const configuredSystem = createSystem({
               module: () =>
-                createModule(undefined).withInjects(() => ({ test: "adsf" })).build(),
+                createModule(undefined)
+                  .withInjects(() => ({ test: "adsf" }))
+                  .build(),
             }).configure(() => ({
               module: {
                 //@ts-ignore
@@ -630,7 +642,9 @@ describe("system", () => {
     function getOrderOfDestructionForDeps(edges: readonly [string, string][]) {
       const order: string[] = [];
       const runningSystem = createSystemFromDeps(edges, (self) => () =>
-        createModule(self).withDestructor(() => order.push(self)).build()
+        createModule(self)
+          .withDestructor(() => order.push(self))
+          .build()
       );
 
       runningSystem.stop();
@@ -657,7 +671,8 @@ describe("system", () => {
     it("should call destructors on modules with destructors", () => {
       const destructor = jest.fn();
       const configuredSystem = createSystem({
-        module1: () => createModule(undefined).withDestructor(destructor).build(),
+        module1: () =>
+          createModule(undefined).withDestructor(destructor).build(),
       }).configure(() => ({}));
 
       const runningSystem = configuredSystem();
@@ -669,7 +684,8 @@ describe("system", () => {
     it("should not call the destructor on a disabled module", () => {
       const destructor = jest.fn();
       const configuredSystem = createSystem({
-        module1: () => createModule(undefined).withDestructor(destructor).build(),
+        module1: () =>
+          createModule(undefined).withDestructor(destructor).build(),
       }).configure(() => ({ module1: { disabled: true } }));
 
       const runningSystem = configuredSystem();
@@ -679,24 +695,24 @@ describe("system", () => {
     });
   });
 
-  it('should be usable as a module in a different system', () => {
+  it("should be usable as a module in a different system", () => {
     const system1 = createSystem({
-      constant: 'constant'
+      constant: "constant",
     }).configure(() => ({}));
 
     const system2 = createSystem({
       system1,
-      module: (deps: {constant: string}) => deps.constant,
-    }).configure(wire => ({
+      module: (deps: { constant: string }) => deps.constant,
+    }).configure((wire) => ({
       module: {
         config: {
-          constant: wire.from('system1').map(sys => sys.constant),
-        }
-      }
+          constant: wire.from("system1").map((sys) => sys.constant),
+        },
+      },
     }));
 
     const result = system2().instance.module;
 
-    expect(result).toBe('constant');
+    expect(result).toBe("constant");
   });
 });

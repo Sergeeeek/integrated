@@ -2,10 +2,10 @@ import * as toposort from 'toposort';
 
 import { InputWire, isInputWire } from './InputWire';
 import {
-  InternalModule,
   Module,
   createModule,
-  isModule
+  isModule,
+  isModuleBuilder
 } from './Module';
 import { OutputWire, isOutputWire } from './OutputWire';
 import { Socket, isSocket, createArraySocket, ArraySocket, ArraySocketConfig } from './Socket';
@@ -422,6 +422,10 @@ export function createSystem<Structure extends {}>(structure: Structure): System
             context[module] = currentModule;
           } else if (typeof currentModule === 'function') {
             const initialized = currentModule(deps);
+
+            if (isModuleBuilder(initialized)) {
+              throw new Error(`Module "${module}" was resolved to a ModuleBuilder. Please check that you call .build()`);
+            }
 
             if (isModule(initialized)) {
               const {instance, stop, inject} = initialized;
