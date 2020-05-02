@@ -20,21 +20,27 @@ describe("WireFactory", () => {
       ).not.toThrow();
     });
 
-    test.each([undefined, null, [], Symbol(), 123, true, {}, () => undefined])(
-      "should not accept %p",
-      (input) => {
-        expect(() =>
-          exampleSystem.configure((wire) => ({
-            func: {
-              config: {
-                // @ts-ignore
-                something: wire.from(input),
-              },
+    test.each([
+      undefined,
+      null,
+      [],
+      Symbol(),
+      123,
+      true,
+      {},
+      (): void => undefined,
+    ])("should not accept %p", (input) => {
+      expect(() =>
+        exampleSystem.configure((wire) => ({
+          func: {
+            config: {
+              // @ts-ignore
+              something: wire.from(input),
             },
-          }))
-        ).toThrowError("WireFactory.from only accepts strings");
-      }
-    );
+          },
+        }))
+      ).toThrowError("WireFactory.from only accepts strings");
+    });
 
     it("should not accept props that don't exist in the system", () => {
       expect(() =>
@@ -94,7 +100,7 @@ describe("WireFactory", () => {
       [123, "123"],
       [true, "true"],
       [{}, "{}"],
-      [() => undefined, "function () { return undefined; }"],
+      [(): void => undefined, "function () { return undefined; }"],
     ])("should not accept %p", (input, string) => {
       expect(() =>
         exampleSystem.configure((wire) => ({

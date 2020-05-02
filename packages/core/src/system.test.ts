@@ -1,5 +1,5 @@
 import { InputWire } from "./InputWire";
-import { createSystem, createModule, createArraySocket } from ".";
+import { createSystem, createModule, createArraySocket, Module } from ".";
 import { createSystemFromDeps, withMemoryErrorLogger } from "./testUtil";
 
 describe("system", () => {
@@ -11,14 +11,16 @@ describe("system", () => {
     test.each([
       undefined,
       null,
-      function test() {},
+      function test(): void {
+        return undefined;
+      },
       [],
       Symbol(),
       123,
       "string",
       true,
     ])("should not accept %p for structure", (structure) => {
-      // @ts-ignore-next-line
+      // @ts-ignore
       expect(() => createSystem(structure)).toThrowError(
         "createSystem only accepts objects"
       );
@@ -74,7 +76,7 @@ describe("system", () => {
       123,
       "string",
       true,
-      () => undefined,
+      (): void => undefined,
     ])("should check that config closure doesn't return %p", (config) => {
       expect(() =>
         // @ts-ignore
@@ -173,27 +175,30 @@ describe("system", () => {
       );
     });
 
-    it('should stop initialized modules if system encountered an error while starting', () => {
+    it("should stop initialized modules if system encountered an error while starting", () => {
       const destructor = jest.fn();
       const configuredSystem = createSystem({
-        normalModule: () => createModule('test').withDestructor(destructor).build(),
-        failingModule: (deps: {normalModule: string}): string => {
-          throw new Error('Test error');
+        normalModule: () =>
+          createModule("test").withDestructor(destructor).build(),
+        failingModule: (deps: { normalModule: string }): string => {
+          throw new Error("Test error");
         },
-        afterFailingModule: (deps: {failingModule: string}) => {
-          return createModule('shouldNotGetThere').withDestructor(destructor).build();
+        afterFailingModule: (deps: { failingModule: string }) => {
+          return createModule("shouldNotGetThere")
+            .withDestructor(destructor)
+            .build();
         },
-      }).configure(wire => ({
+      }).configure((wire) => ({
         failingModule: {
           config: {
-            normalModule: wire.from('normalModule'),
-          }
+            normalModule: wire.from("normalModule"),
+          },
         },
         afterFailingModule: {
           config: {
-            failingModule: wire.from('failingModule')
-          }
-        }
+            failingModule: wire.from("failingModule"),
+          },
+        },
       }));
 
       expect(() => configuredSystem()).toThrow();
@@ -506,9 +511,9 @@ describe("system", () => {
     describe("order of initialization", () => {
       function getOrderOfInitializationForDeps(
         edges: readonly [string, string][]
-      ) {
+      ): readonly string[] {
         const order: string[] = [];
-        createSystemFromDeps(edges, (self) => () => order.push(self));
+        createSystemFromDeps(edges, (self) => (): number => order.push(self));
 
         return order;
       }
@@ -668,9 +673,14 @@ describe("system", () => {
   });
 
   describe("system stop", () => {
-    function getOrderOfDestructionForDeps(edges: readonly [string, string][]) {
+    function getOrderOfDestructionForDeps(
+      edges: readonly [string, string][]
+    ): readonly string[] {
       const order: string[] = [];
-      const runningSystem = createSystemFromDeps(edges, (self) => () =>
+      const runningSystem = createSystemFromDeps(edges, (self) => (): Module<
+        string,
+        {}
+      > =>
         createModule(self)
           .withDestructor(() => order.push(self))
           .build()

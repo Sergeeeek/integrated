@@ -1,10 +1,11 @@
-import { createSystem } from '.';
-import { flatten } from './util';
+import { createSystem } from ".";
+import { flatten } from "./util";
+import { Module } from "../dist";
 
 export function createSystemFromDeps(
   edges: readonly [string, string][],
   moduleFactory: (self: string) => (deps: { [key: string]: unknown }) => unknown
-) {
+): Module<{ [key: string]: unknown }, {}> {
   const structure: {
     [key: string]: (deps: { [key: string]: unknown }) => unknown;
   } = {};
@@ -37,10 +38,12 @@ export function createSystemFromDeps(
   return result;
 }
 
-export function withMemoryErrorLogger<T>(closure: () => T): {stdErr: unknown[], result?: T} {
+export function withMemoryErrorLogger<T>(
+  closure: () => T
+): { stdErr: unknown[]; result?: T } {
   const stdErr: unknown[] = [];
   const originalError = console.error;
-  console.error = (...args: unknown[]) => {
+  console.error = (...args: unknown[]): void => {
     stdErr.push(args);
   };
 
