@@ -1,9 +1,5 @@
 type Tail<T extends readonly unknown[]> = ((...list: T) => void) extends ((head: unknown, ...tail: infer Tail) => void) ? Tail : [];
 
-type DeepGet<T, Path extends readonly (string | number | symbol)[]> = (Path extends [infer Head, ...unknown[]]
-  ? Head extends keyof T ? { value: DeepGet<T[Head], Tail<Path>> } : {value: never}
-  : {value: T})['value'];
-
 type DeepSet<T, Path extends readonly (string | symbol | unknown)[], Val> =
   Path extends readonly [infer Head, ...unknown[]]
     ? {
@@ -29,11 +25,13 @@ function mapReplaceKey<K, V>(map: Map<K, V>, key: K, val: V): Map<K, V> {
   return newMap;
 }
 
+// TODO: there are many `any` types here, probably need to test it more and/or rewrite
 export function deepSet<T, Path extends readonly (string | symbol | unknown)[], Val>(obj: T, path: Path, val: Val): DeepSet<T, Path, Val> {
   const objPath = [obj];
 
   for (const prop of path) {
     if (objPath.length === path.length) {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       objPath.push(val as any);
       break;
     }
@@ -42,7 +40,7 @@ export function deepSet<T, Path extends readonly (string | symbol | unknown)[], 
     }
     const lastObj = last(objPath);
 
-    let next;
+    let next: T;
     if (lastObj instanceof Map) {
       next = lastObj.get(prop)
     } else {
@@ -55,6 +53,7 @@ export function deepSet<T, Path extends readonly (string | symbol | unknown)[], 
     objPath.push(next);
   }
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   return objPath.reduceRight((acc: any, next: any, ind: number) => {
     if (next === undefined || next === null) {
       throw new Error(`Path ${path.join('.')} is invalid on ${JSON.stringify(obj, null, 2)}`);
@@ -81,6 +80,7 @@ export function deepSet<T, Path extends readonly (string | symbol | unknown)[], 
         [p]: acc,
       };
     }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   }) as any;
 }
 
@@ -112,6 +112,7 @@ export function filterDeep<T, TSearch>(obj: T, predicate: (value: unknown) => va
   }
 
   if (obj instanceof Object) {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const indexedObject = (obj as any);
     return flatten(
       [...Object.getOwnPropertyNames(indexedObject), ...(typeof Object.getOwnPropertySymbols === 'function' ? Object.getOwnPropertySymbols(indexedObject) : [])]
@@ -146,3 +147,4 @@ export function setDifference<T>(set1: Set<T>, set2: Set<T>): Set<T> {
 
   return result;
 }
+

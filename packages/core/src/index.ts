@@ -161,7 +161,7 @@ function createDependencyGraph(definitions: ReadonlyArray<readonly [string, {isS
     inputs.forEach(dep => edges.push([dep.value.prop, moduleName]));
 
     if (outputs) {
-      const addOutput = (outputWire: OutputWire<unknown, unknown[]>) => {
+      const addOutput = (outputWire: OutputWire<unknown, unknown[]>): void => {
         const wireProp = outputWire.prop;
 
         // Socket is going to be initialized at '${sinkProp}_empty_init_RESERVED'.
@@ -333,7 +333,7 @@ export function createSystem<Structure extends {}>(structure: Structure): System
         };
       } = config;
 
-      const configuredSystem = () => {
+      const configuredSystem = (): Module<MapToResultTypes<Structure>, {}> => {
         const moduleDepsPairs: (readonly [
           string,
           {
@@ -359,7 +359,7 @@ export function createSystem<Structure extends {}>(structure: Structure): System
         let completedModulesIndex = 0;
 
         const context: Partial<MapToResultTypes<Structure>> = {};
-        const initializedModules: {[key: string]: {stop(): void; inject(): unknown}} = {};
+        const initializedModules: {[key: string]: {stop(): void; inject(): {[key: string]: unknown}}} = {};
 
         try {
           for (const moduleName of sortedModules) {
@@ -405,7 +405,7 @@ export function createSystem<Structure extends {}>(structure: Structure): System
               }
             }
 
-            const acceptInject = (outputWire: OutputWire<unknown, unknown[]>, inject: unknown) => {
+            const acceptInject = (outputWire: OutputWire<unknown, unknown[]>, inject: unknown): void => {
               const maybeSink = context[outputWire.prop];
               const sinkConfig = weakTypeConfig[outputWire.prop];
 
@@ -448,7 +448,7 @@ export function createSystem<Structure extends {}>(structure: Structure): System
             completedModulesIndex++;
 
             if (initializedModules[module] || (moduleConfig && moduleConfig.inject && moduleConfig.inject.self)) {
-              const inject = () => {
+              const inject = (): {[key: string]: unknown} | undefined => {
                 if (initializedModules[module]) {
                   const result = initializedModules[module].inject();
                   if (typeof result === 'object' && result !== null && result !== undefined) {
@@ -512,8 +512,8 @@ export function createSystem<Structure extends {}>(structure: Structure): System
               if (weakTypeConfig[moduleName] && weakTypeConfig[moduleName].disabled) {
                 continue;
               }
-              if (initializedModules[moduleName] && initializedModules[moduleName].stop) {
-                initializedModules[moduleName].stop!();
+              if (initializedModules[moduleName]) {
+                initializedModules[moduleName].stop();
               }
             }
           })
