@@ -115,6 +115,7 @@ function ServerModule(config: {dbConnection: DBConnection, port: number}): {
   // Store the server instance
   const expressServer = app.listen(config.port, () => console.log('Server is listening on port ${config.port}`));
 
+  // This is new
   return createModule(undefined)
     .withDestructor(() => expressServer.close())
     .build();
@@ -127,7 +128,7 @@ In this example our ServerModule instance will be `undefined`, now explicitly in
 
 ### Systems are modules too
 
-When we called `serverSystem.configure`, we got back a function that initializes that system. Remember, modules in integrated are just plain functions, so we can do this:
+When we called `serverSystem.configure`, we got back a function that initializes that system, so why not try this?
 
 ```typescript
 const appSystem = createSystem({
@@ -136,7 +137,9 @@ const appSystem = createSystem({
 });
 ```
 
-This makes your code even more composable! You can now create self-contained systems that do just one thing and integrate it into a larger system.
+Remember, modules in `integrated` are just plain functions, so they are also modules at the same time.
+
+This makes your code even more composable! You can now compose arbitrarily complex systems into a larger system.
 
 
 ## API
