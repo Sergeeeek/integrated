@@ -3,9 +3,9 @@ type BaseInjects = { [key: string]: unknown };
 class Module<T, Injects extends BaseInjects> {
   isStopped = false;
   constructor(
-    public instance: T,
-    private destructor?: () => void,
-    private injector?: () => Injects
+    public readonly instance: T,
+    private readonly destructor?: () => void,
+    private readonly injector?: () => Injects
   ) {}
 
   stop = (): void => {
@@ -27,9 +27,9 @@ class Module<T, Injects extends BaseInjects> {
 
 class ModuleBuilder<T, Injects extends BaseInjects> {
   constructor(
-    public instance: T,
-    public destructor?: () => void,
-    public injector?: () => Injects
+    public readonly instance: T,
+    public readonly destructor?: () => void,
+    public readonly injector?: () => Injects
   ) {}
 
   withDestructor(destructor: () => void): ModuleBuilder<T, Injects> {
