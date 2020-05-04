@@ -10,9 +10,9 @@ A declarative micro-framework for Dependency Injection in TypeScript and JavaScr
 
 Let's make an express application which fetches some stuff from a database.
 
-### Create a module
-
 To do this in **Integrated** we'll first need a *module*:
+
+### Create a module
 
 ```typescript
 // We'll make a simple express server that fetches some stuff
