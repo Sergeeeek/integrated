@@ -1,5 +1,4 @@
-import { isModule } from "./Module";
-import { createModule } from "../dist";
+import { isModule, createModule } from "./Module";
 
 describe("isModule", () => {
   test.each([

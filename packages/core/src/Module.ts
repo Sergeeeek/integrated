@@ -1,120 +1,64 @@
 type BaseInjects = { [key: string]: unknown };
 
-const ModuleSymbol = "@______internal_ModuleSymbol";
-const ModuleProto: {
-  [ModuleSymbol]: true;
-} = Object.defineProperty({}, ModuleSymbol, {
-  configurable: false,
-  enumerable: false,
-  writable: false,
-  value: true,
-});
+class Module<T, Injects extends BaseInjects> {
+  isStopped = false;
+  constructor(
+    public instance: T,
+    private destructor?: () => void,
+    private injector?: () => Injects
+  ) {}
 
-const ModuleBuilderSymbol = "@______internal_ModuleBuilderSymbol";
-const ModuleBuilderProto: {
-  [ModuleBuilderSymbol]: true;
-} = Object.defineProperty({}, ModuleBuilderSymbol, {
-  configurable: false,
-  enumerable: false,
-  writable: false,
-  value: true,
-});
+  stop = (): void => {
+    if (this.isStopped || !this.destructor) {
+      return;
+    }
 
-export interface InternalModule<T, Injects extends BaseInjects>
-  extends Module<T, Injects> {
-  [ModuleSymbol]: true;
+    this.isStopped = true;
+    this.destructor();
+  };
+  inject = (): Injects | void => {
+    if (this.injector) {
+      return this.injector();
+    }
+
+    return undefined;
+  };
 }
 
-function internalBuildModule<T, Injects extends { [key: string]: unknown }>(
-  m: Module<T, Injects>
-): InternalModule<T, Injects> {
-  return Object.assign(Object.create(ModuleProto) as typeof ModuleProto, m);
+class ModuleBuilder<T, Injects extends BaseInjects> {
+  constructor(
+    public instance: T,
+    public destructor?: () => void,
+    public injector?: () => Injects
+  ) {}
+
+  withDestructor(destructor: () => void): ModuleBuilder<T, Injects> {
+    return new ModuleBuilder(this.instance, destructor, this.injector);
+  }
+  withInjects<U extends { [key: string]: unknown }>(
+    injector: () => U
+  ): ModuleBuilder<T, U> {
+    return new ModuleBuilder(this.instance, this.destructor, injector);
+  }
+  build(): Module<T, Injects> {
+    return new Module<T, Injects>(
+      this.instance,
+      this.destructor,
+      this.injector
+    );
+  }
 }
 
-export function isModule(value: unknown): value is InternalModule<unknown, {}> {
-  if (value === undefined || value === null) {
-    return false;
-  }
-  if (typeof value === "object") {
-    const obj = value as { [key: string]: unknown };
-
-    return Boolean(obj[ModuleSymbol]);
-  }
-
-  return false;
+export function isModule(value: unknown): value is Module<unknown, {}> {
+  return value instanceof Module;
 }
 
 export function isModuleBuilder(
   value: unknown
-): value is InternalModuleBuilder<unknown, {}> {
-  if (value === undefined || value === null) {
-    return false;
-  }
-  if (typeof value === "object") {
-    const obj = value as { [key: string]: unknown };
-
-    return Boolean(obj[ModuleBuilderSymbol]);
-  }
-
-  return false;
-}
-
-export interface InternalModuleBuilder<T, Injects extends BaseInjects>
-  extends ModuleBuilder<T, Injects> {
-  [ModuleBuilderSymbol]: true;
-}
-
-export interface ModuleBuilder<T, Injects extends BaseInjects> {
-  instance: T;
-  stop?: () => void;
-  inject?: () => Injects;
-  withDestructor(destructor: () => void): ModuleBuilder<T, Injects>;
-  withInjects<U extends { [key: string]: unknown }>(
-    inject: () => U
-  ): ModuleBuilder<T, U>;
-  build(): Module<T, Injects>;
-}
-
-function internalCreateModule<T, Injects extends BaseInjects>(
-  m: ModuleBuilder<T, Injects>
-): InternalModuleBuilder<T, Injects> {
-  return Object.assign(
-    Object.create(ModuleBuilderProto) as typeof ModuleBuilderProto,
-    m
-  );
-}
-
-export interface Module<T, Injects extends BaseInjects> {
-  instance: T;
-  stop(): void;
-  inject(): Injects;
+): value is ModuleBuilder<unknown, {}> {
+  return value instanceof ModuleBuilder;
 }
 
 export function createModule<T>(instance: T): ModuleBuilder<T, {}> {
-  const module = internalCreateModule({
-    instance,
-    withDestructor(destructor: () => void): ModuleBuilder<T, {}> {
-      return internalCreateModule({
-        ...this,
-        stop: destructor,
-      });
-    },
-    withInjects<U extends { [key: string]: unknown }>(
-      inject: () => U
-    ): ModuleBuilder<T, U> {
-      return internalCreateModule({
-        ...this,
-        inject,
-      });
-    },
-    build() {
-      return internalBuildModule({
-        instance: this.instance,
-        stop: this.stop || ((): void => undefined),
-        inject: this.inject || ((): void => undefined),
-      });
-    },
-  });
-
-  return module;
+  return new ModuleBuilder(instance);
 }

@@ -733,6 +733,21 @@ describe("system", () => {
       expect(destructor).not.toHaveBeenCalled();
     });
   });
+  it("should stop modules twice if the system is already stopped", () => {
+    const destructor = jest.fn();
+    const configuredSystem = createSystem({
+      module1: () => createModule(undefined).withDestructor(destructor).build(),
+    }).configure(() => ({}));
+
+    const runningSystem = configuredSystem();
+
+    runningSystem.stop();
+
+    // Stopping again
+    runningSystem.stop();
+
+    expect(destructor).toHaveBeenCalledTimes(1);
+  });
 
   it("should be usable as a module in a different system", () => {
     const system1 = createSystem({
