@@ -1,6 +1,6 @@
 type BaseInjects = { [key: string]: unknown };
 
-class Module<T, Injects extends BaseInjects> {
+export class Module<T, Injects extends BaseInjects> {
   isStopped = false;
   constructor(
     public readonly instance: T,
@@ -16,12 +16,12 @@ class Module<T, Injects extends BaseInjects> {
     this.isStopped = true;
     this.destructor();
   };
-  inject = (): Injects | void => {
+  inject = (): Injects | {} => {
     if (this.injector) {
       return this.injector();
     }
 
-    return undefined;
+    return {};
   };
 }
 

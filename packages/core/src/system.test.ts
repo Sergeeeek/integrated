@@ -1,11 +1,11 @@
 import { InputWire } from "./InputWire";
-import { createSystem, createModule, createArraySocket, Module } from ".";
-import { createSystemFromDeps, withMemoryErrorLogger } from "./testUtil";
+import { createContext, createModule, createArraySocket, Module } from ".";
+import { createContextFromDeps, withMemoryErrorLogger } from "./testUtil";
 
-describe("system", () => {
-  describe("createSystem", () => {
+describe("context", () => {
+  describe("createContext", () => {
     it("should accept empty structure", () => {
-      expect(() => createSystem({})).not.toThrow();
+      expect(() => createContext({})).not.toThrow();
     });
 
     test.each([
@@ -21,42 +21,42 @@ describe("system", () => {
       true,
     ])("should not accept %p for structure", (structure) => {
       // @ts-ignore
-      expect(() => createSystem(structure)).toThrowError(
-        "createSystem only accepts objects"
+      expect(() => createContext(structure)).toThrowError(
+        "createContext only accepts objects"
       );
     });
 
-    it("should return a configurable system", () => {
-      const system = createSystem({});
+    it("should return a configurable context", () => {
+      const context = createContext({});
 
-      expect(system).toMatchObject({
+      expect(context).toMatchObject({
         configure: expect.any(Function),
       });
     });
   });
 
-  describe("system configure function", () => {
+  describe("context configure function", () => {
     it("should accept a configuration closure", () => {
-      const system = createSystem({});
+      const context = createContext({});
 
-      expect(() => system.configure(() => ({}))).not.toThrow();
+      expect(() => context.configure(() => ({}))).not.toThrow();
     });
 
     test.each([undefined, null, [], Symbol(), 123, "string", true, {}])(
       "should not accept %p",
       (input) => {
-        const system = createSystem({});
+        const context = createContext({});
 
         // @ts-ignore-next-line
-        expect(() => system.configure(input)).toThrowError(
-          "System.configure only accepts functions"
+        expect(() => context.configure(input)).toThrowError(
+          "Context.configure only accepts functions"
         );
       }
     );
 
     it("should call the configuration closure with an instance of WireFactory", () => {
       let wireFactory;
-      createSystem({}).configure((wires) => {
+      createContext({}).configure((wires) => {
         wireFactory = wires;
 
         return {};
@@ -80,22 +80,22 @@ describe("system", () => {
     ])("should check that config closure doesn't return %p", (config) => {
       expect(() =>
         // @ts-ignore
-        createSystem({}).configure(() => config)
+        createContext({}).configure(() => config)
       ).toThrowErrorMatchingSnapshot();
     });
 
     it("should accept a plain object from the configuration closure", () => {
-      expect(() => createSystem({}).configure(() => ({}))).not.toThrow();
+      expect(() => createContext({}).configure(() => ({}))).not.toThrow();
     });
 
-    it("should check that config doesn't contain any keys that don't exist in system structure", () => {
-      const system = createSystem({
+    it("should check that config doesn't contain any keys that don't exist in context structure", () => {
+      const context = createContext({
         module: () => undefined,
         module2: (deps: { myDependency: string }) => deps.myDependency,
       });
 
       expect(() =>
-        system.configure(() => ({
+        context.configure(() => ({
           module2: {
             config: {
               myDependency: "asdf",
@@ -108,17 +108,17 @@ describe("system", () => {
           },
         }))
       ).toThrowErrorMatchingInlineSnapshot(
-        `"Config contains keys that don't exist in system definition. These keys are: [\\"nonExistingModule\\"]"`
+        `"Config contains keys that don't exist in context definition. These keys are: [\\"nonExistingModule\\"]"`
       );
     });
 
     it('should check that only allowed module settings are "config", "inject" and "disabled"', () => {
-      const system = createSystem({
+      const context = createContext({
         module: (deps: { string: string }) => deps.string,
       });
 
       expect(() =>
-        system.configure(() => ({
+        context.configure(() => ({
           module: {
             invalidKeyHere: "asdf",
             config: {
@@ -134,18 +134,18 @@ describe("system", () => {
     });
   });
 
-  describe("system start", () => {
+  describe("context start", () => {
     it("should call any modules in the structure if they are functions", () => {
       const structure = {
         func1: jest.fn(() => "func1"),
         func2: jest.fn(() => "func2"),
         func3: jest.fn(() => "func3"),
       };
-      const system = createSystem(structure);
+      const context = createContext(structure);
 
-      const configuredSystem = system.configure(() => ({}));
+      const configuredContext = context.configure(() => ({}));
 
-      configuredSystem();
+      configuredContext();
 
       expect(structure.func1).toHaveBeenCalledTimes(1);
       expect(structure.func2).toHaveBeenCalledTimes(1);
@@ -156,28 +156,28 @@ describe("system", () => {
       const structure = {
         module1: jest.fn(() => "module1"),
       };
-      const configuredSystem = createSystem(structure).configure(() => ({
+      const configuredContext = createContext(structure).configure(() => ({
         module1: { disabled: true },
       }));
 
-      configuredSystem();
+      configuredContext();
 
       expect(structure.module1).not.toHaveBeenCalled();
     });
 
     it("should throw an error when you don't call module.build() on a module builder", () => {
-      const configuredSystem = createSystem({
+      const configuredContext = createContext({
         module: () => createModule("test"),
       }).configure(() => ({}));
 
-      expect(() => configuredSystem()).toThrowErrorMatchingInlineSnapshot(
+      expect(() => configuredContext()).toThrowErrorMatchingInlineSnapshot(
         `"Module \\"module\\" was resolved to a ModuleBuilder. Please check that you call .build()"`
       );
     });
 
-    it("should stop initialized modules if system encountered an error while starting", () => {
+    it("should stop initialized modules if context encountered an error while starting", () => {
       const destructor = jest.fn();
-      const configuredSystem = createSystem({
+      const configuredContext = createContext({
         normalModule: () =>
           createModule("test").withDestructor(destructor).build(),
         failingModule: (deps: { normalModule: string }): string => {
@@ -201,7 +201,7 @@ describe("system", () => {
         },
       }));
 
-      expect(() => configuredSystem()).toThrow();
+      expect(() => configuredContext()).toThrow();
 
       // Called for normalModule, not called for afterFailingModule
       expect(destructor).toHaveBeenCalledTimes(1);
@@ -212,12 +212,12 @@ describe("system", () => {
         const module2 = jest.fn(
           (deps: { dependency: string }) => deps.dependency
         );
-        const system = createSystem({
+        const context = createContext({
           module1: "constant",
           module2,
         });
 
-        const configuredSystem = system.configure((wire) => ({
+        const configuredContext = context.configure((wire) => ({
           module2: {
             config: {
               dependency: wire.from("module1"),
@@ -225,7 +225,7 @@ describe("system", () => {
           },
         }));
 
-        configuredSystem();
+        configuredContext();
 
         expect(module2).toHaveBeenCalledWith({ dependency: "constant" });
       });
@@ -234,7 +234,7 @@ describe("system", () => {
         const module2 = jest.fn(
           (deps: { dependency: string }) => deps.dependency
         );
-        const configuredSystem = createSystem({
+        const configuredContext = createContext({
           module1: () => "functionModuleInstance",
           module2,
         }).configure((wire) => ({
@@ -245,7 +245,7 @@ describe("system", () => {
           },
         }));
 
-        configuredSystem();
+        configuredContext();
 
         expect(module2).toHaveBeenCalledWith({
           dependency: "functionModuleInstance",
@@ -257,7 +257,7 @@ describe("system", () => {
         const module2 = jest.fn(
           (deps: { dependency: string }) => deps.dependency
         );
-        const configuredSystem = createSystem({
+        const configuredContext = createContext({
           module1: () => createModule("module1Instance").build(),
           module2,
         }).configure((wire) => ({
@@ -268,13 +268,13 @@ describe("system", () => {
           },
         }));
 
-        configuredSystem();
+        configuredContext();
 
         expect(module2).toHaveBeenCalledWith({ dependency: "module1Instance" });
       });
 
       it("should resolve wire.from from nested structures such as objects, arrays", () => {
-        const system = createSystem({
+        const context = createContext({
           constant: "constant",
           module: (deps: {
             value: string;
@@ -296,7 +296,7 @@ describe("system", () => {
           }) => deps,
         });
 
-        const configuredSystem = system.configure((wire) => ({
+        const configuredContext = context.configure((wire) => ({
           module: {
             config: {
               value: wire.from("constant"),
@@ -322,7 +322,7 @@ describe("system", () => {
           },
         }));
 
-        const result = configuredSystem().instance.module;
+        const result = configuredContext().instance.module;
 
         expect(result).toEqual({
           value: "constant",
@@ -343,13 +343,13 @@ describe("system", () => {
       });
 
       it("should allow to pass inputwires inside of arrays as well as wrapping the array itself", () => {
-        const system = createSystem({
+        const context = createContext({
           constant: "constant",
           arrayConstant: (deps: { constant: string }) => [deps.constant],
           module: (deps: { array1: string[]; array2: string[] }) => deps,
         });
 
-        const configuredSystem = system.configure((wire) => {
+        const configuredContext = context.configure((wire) => {
           return {
             arrayConstant: {
               config: {
@@ -365,7 +365,7 @@ describe("system", () => {
           };
         });
 
-        const result = configuredSystem().instance.module;
+        const result = configuredContext().instance.module;
 
         expect(result).toEqual({
           array1: ["constant", "constant"],
@@ -374,7 +374,7 @@ describe("system", () => {
       });
 
       it("should give an error when you try to depend on a disabled module", () => {
-        const configuredSystem = createSystem({
+        const configuredContext = createContext({
           constant: "constant",
           module: (deps: { constant: string }) => deps,
         }).configure((wire) => ({
@@ -388,11 +388,11 @@ describe("system", () => {
           },
         }));
 
-        expect(() => configuredSystem()).toThrowErrorMatchingSnapshot();
+        expect(() => configuredContext()).toThrowErrorMatchingSnapshot();
       });
 
       it("should allow to depend on disabled modules using wire.from(...).optional", () => {
-        const configuredSystem = createSystem({
+        const configuredContext = createContext({
           constant: "constant",
           module: (deps: { constant?: string }) => deps,
         }).configure((wire) => ({
@@ -406,14 +406,14 @@ describe("system", () => {
           },
         }));
 
-        expect(configuredSystem).not.toThrow();
+        expect(configuredContext).not.toThrow();
 
-        const result = configuredSystem();
+        const result = configuredContext();
         expect(result.instance.module.constant).toBeUndefined();
       });
 
       it("should allow map one InputWire to another", () => {
-        const configuredSystem = createSystem({
+        const configuredContext = createContext({
           configTime: new Date("2020-04-25T00:00:00.000Z"),
           module: (deps: { startTime: string }) => deps.startTime,
         }).configure((wire) => ({
@@ -426,14 +426,14 @@ describe("system", () => {
           },
         }));
 
-        const result = configuredSystem().instance.module;
+        const result = configuredContext().instance.module;
 
         expect(result).toBe("2020-04-25T00:00:00.000Z");
       });
 
       describe("with sockets", () => {
         it("should allow to chain multiple maps together", () => {
-          const configuredSystem = createSystem({
+          const configuredContext = createContext({
             constant: 10,
             module: (deps: { something: string }) => deps.something,
           }).configure((wire) => ({
@@ -448,13 +448,13 @@ describe("system", () => {
             },
           }));
 
-          const result = configuredSystem().instance.module;
+          const result = configuredContext().instance.module;
 
           expect(result).toBe("AAAAAAAAAA");
         });
 
         it("should resolve array socket to an array value", () => {
-          const configuredSystem = createSystem({
+          const configuredContext = createContext({
             socket: createArraySocket<number>(),
             number1: 1,
             number2: 2,
@@ -478,13 +478,13 @@ describe("system", () => {
             },
           }));
 
-          const result = configuredSystem().instance.module;
+          const result = configuredContext().instance.module;
 
           expect(result).toEqual(new Set([1, 2, 3]));
         });
 
         it("should allow to map the resolved value of a socket when depending on a socket", () => {
-          const configuredSystem = createSystem({
+          const configuredContext = createContext({
             socket: createArraySocket<number>(),
             number1: 1,
             number2: 2,
@@ -501,7 +501,7 @@ describe("system", () => {
             },
           }));
 
-          const result = configuredSystem().instance.module;
+          const result = configuredContext().instance.module;
 
           expect(result).toBe(3);
         });
@@ -513,7 +513,7 @@ describe("system", () => {
         edges: readonly [string, string][]
       ): readonly string[] {
         const order: string[] = [];
-        createSystemFromDeps(edges, (self) => (): number => order.push(self));
+        createContextFromDeps(edges, (self) => (): number => order.push(self));
 
         return order;
       }
@@ -543,7 +543,7 @@ describe("system", () => {
 
       describe("injects", () => {
         it("should take take value from injects of a module and put it into a socket specified by wire.into", () => {
-          const configuredSystem = createSystem({
+          const configuredContext = createContext({
             socket: createArraySocket<string>(),
             module: () =>
               createModule(undefined)
@@ -559,13 +559,13 @@ describe("system", () => {
             },
           }));
 
-          const result = configuredSystem().instance.socket;
+          const result = configuredContext().instance.socket;
 
           expect(result).toEqual(["string"]);
         });
 
         it("should allow to inject into multiple sockets by passing an array of OutputWires", () => {
-          const configuredSystem = createSystem({
+          const configuredContext = createContext({
             socket1: createArraySocket<string>(),
             socket2: createArraySocket<string>(),
             constant: "constant",
@@ -575,14 +575,14 @@ describe("system", () => {
             },
           }));
 
-          const result = configuredSystem().instance;
+          const result = configuredContext().instance;
 
           expect(result.socket1).toEqual(["constant"]);
           expect(result.socket2).toEqual(["constant"]);
         });
 
         it("should throw an error when trying to inject into a disabled socket", () => {
-          const configuredSystem = createSystem({
+          const configuredContext = createContext({
             socket: createArraySocket<string>(),
             constant: "constant",
           }).configure((wire) => ({
@@ -590,19 +590,19 @@ describe("system", () => {
             constant: { inject: { self: wire.into("socket") } },
           }));
 
-          expect(() => configuredSystem()).toThrowErrorMatchingInlineSnapshot(
+          expect(() => configuredContext()).toThrowErrorMatchingInlineSnapshot(
             `"Tried to inject a value from \\"constant\\" into \\"socket\\", but Socket \\"socket\\" is disabled"`
           );
         });
 
         it("should throw an error when trying to inject into something other than a socket", () => {
-          const system = createSystem({
+          const context = createContext({
             constant1: "constant",
             constant2: "constant",
           });
 
           expect(() =>
-            system.configure((wire) => ({
+            context.configure((wire) => ({
               constant1: {
                 inject: {
                   // @ts-ignore
@@ -611,13 +611,13 @@ describe("system", () => {
               },
             }))
           ).toThrowErrorMatchingInlineSnapshot(
-            `"WireFactory.into called with key \\"constant2\\", but \\"constant2\\" is not a Socket in this system. Valid socket keys for this system are []"`
+            `"WireFactory.into called with key \\"constant2\\", but \\"constant2\\" is not a Socket in this context. Valid socket keys for this context are []"`
           );
         });
 
         it("should throw an error when OutputWire is not provided for an inject", () => {
           const { stdErr } = withMemoryErrorLogger(() => {
-            const configuredSystem = createSystem({
+            const configuredContext = createContext({
               module: () =>
                 createModule(undefined)
                   .withInjects(() => ({ test: "adsf" }))
@@ -629,14 +629,14 @@ describe("system", () => {
               },
             }));
 
-            expect(() => configuredSystem()).toThrowErrorMatchingSnapshot();
+            expect(() => configuredContext()).toThrowErrorMatchingSnapshot();
           });
 
           expect(stdErr).toMatchSnapshot();
         });
 
         it("should throw an error when something other than an OutputWire is passed as inject target", () => {
-          const configuredSystem = createSystem({
+          const configuredContext = createContext({
             constant: "constant",
           }).configure(() => ({
             constant: {
@@ -647,13 +647,13 @@ describe("system", () => {
             },
           }));
 
-          expect(() => configuredSystem()).toThrowErrorMatchingInlineSnapshot(
+          expect(() => configuredContext()).toThrowErrorMatchingInlineSnapshot(
             `"Wrong value passed to inject.self in module \\"constant\\". Please use wire.into to configure injects."`
           );
         });
 
         it("should throw an error if array of something other than OutputWire is paased as inject target", () => {
-          const configuredSystem = createSystem({
+          const configuredContext = createContext({
             constant: "constant",
           }).configure(() => ({
             constant: {
@@ -664,7 +664,7 @@ describe("system", () => {
             },
           }));
 
-          expect(() => configuredSystem()).toThrowErrorMatchingInlineSnapshot(
+          expect(() => configuredContext()).toThrowErrorMatchingInlineSnapshot(
             `"Wrong value passed to inject.self in module \\"constant\\". Please use wire.into to configure injects."`
           );
         });
@@ -672,12 +672,12 @@ describe("system", () => {
     });
   });
 
-  describe("system stop", () => {
+  describe("context stop", () => {
     function getOrderOfDestructionForDeps(
       edges: readonly [string, string][]
     ): readonly string[] {
       const order: string[] = [];
-      const runningSystem = createSystemFromDeps(edges, (self) => (): Module<
+      const runningContext = createContextFromDeps(edges, (self) => (): Module<
         string,
         {}
       > =>
@@ -686,7 +686,7 @@ describe("system", () => {
           .build()
       );
 
-      runningSystem.stop();
+      runningContext.stop();
 
       return order;
     }
@@ -709,63 +709,63 @@ describe("system", () => {
 
     it("should call destructors on modules with destructors", () => {
       const destructor = jest.fn();
-      const configuredSystem = createSystem({
+      const configuredContext = createContext({
         module1: () =>
           createModule(undefined).withDestructor(destructor).build(),
       }).configure(() => ({}));
 
-      const runningSystem = configuredSystem();
-      runningSystem.stop();
+      const runningContext = configuredContext();
+      runningContext.stop();
 
       expect(destructor).toHaveBeenCalledTimes(1);
     });
 
     it("should not call the destructor on a disabled module", () => {
       const destructor = jest.fn();
-      const configuredSystem = createSystem({
+      const configuredContext = createContext({
         module1: () =>
           createModule(undefined).withDestructor(destructor).build(),
       }).configure(() => ({ module1: { disabled: true } }));
 
-      const runningSystem = configuredSystem();
-      runningSystem.stop();
+      const runningContext = configuredContext();
+      runningContext.stop();
 
       expect(destructor).not.toHaveBeenCalled();
     });
   });
-  it("should stop modules twice if the system is already stopped", () => {
+  it("should stop modules twice if the context is already stopped", () => {
     const destructor = jest.fn();
-    const configuredSystem = createSystem({
+    const configuredContext = createContext({
       module1: () => createModule(undefined).withDestructor(destructor).build(),
     }).configure(() => ({}));
 
-    const runningSystem = configuredSystem();
+    const runningContext = configuredContext();
 
-    runningSystem.stop();
+    runningContext.stop();
 
     // Stopping again
-    runningSystem.stop();
+    runningContext.stop();
 
     expect(destructor).toHaveBeenCalledTimes(1);
   });
 
-  it("should be usable as a module in a different system", () => {
-    const system1 = createSystem({
+  it("should be usable as a module in a different context", () => {
+    const context1 = createContext({
       constant: "constant",
     }).configure(() => ({}));
 
-    const system2 = createSystem({
-      system1,
+    const context2 = createContext({
+      context1,
       module: (deps: { constant: string }) => deps.constant,
     }).configure((wire) => ({
       module: {
         config: {
-          constant: wire.from("system1").map((sys) => sys.constant),
+          constant: wire.from("context1").map((sys) => sys.constant),
         },
       },
     }));
 
-    const result = system2().instance.module;
+    const result = context2().instance.module;
 
     expect(result).toBe("constant");
   });

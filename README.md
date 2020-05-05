@@ -3,12 +3,25 @@
 
 A declarative micro-framework for Dependency Injection in TypeScript and JavaScript.
 
+## Installation
+
+**NPM**:
+```sh
+$ npm install --save @integrated/core
+```
+
+**Yarn**:
+```sh
+$ yarn add @integrated/core
+```
+
 ## Table Of Contents
+
 
 
 ## Usage
 
-Let's make an express application which fetches some stuff from a database.
+Let's make an example express application which fetches some stuff from a database.
 
 To do this in **Integrated** we'll first need a *module*:
 
@@ -30,7 +43,7 @@ function ServerModule(config: {dbConnection: DBConnection, port: number}) {
 ```
 
 *Modules* in **Integrated** are just normal functions with an optional first
-argument for configuration. Here, we'll take the `dbConnection` and `port`,
+argument for configuration. Here, we'll take the dbConnection and port,
 these are the *dependencies* of our ServerModule.
 
 > This definition of a module doesn't allow for the server to be stopped yet,
@@ -39,37 +52,37 @@ don't worry we'll get to that later.
 ### Assemble it!
 
 We need to tell **Integrated** about the modules that we have, we do that by
-creating a new *system*:
+creating a new *context*:
 
 ```typescript
-import { createSystem } from '@integrated/core';
+import { createContext } from '@integrated/core';
 
-const serverSystem = createSystem({
+const serverContext = createContext({
   db: PostgresDBConnectionModule,
   server: ExpressModule,
 });
 ```
 
-Systems are a collection of modules.
+Context is a collection of modules.
 
-`createSystem` takes a system definition and returns a new system.
-The definition is a plain JS object where values are your modules and keys just give your modules a name in *this particular* system.
+`createContext` takes a context definition and returns a new context.
+The definition is a plain JS object where values are your modules and keys just give your modules a name in *this particular* context.
 
 As you see, we didn't tell **Integrated** how to configure the dependencies
 between different modules. Lets do that!
 
-> Side note: you can have as many systems as you want, they do not have global state.
+> Side note: you can have as many contexts as you want, they do not have global state.
 
 ### Configure it!
 
 Remember in the `ServerModule` definition that it had a config argument which took a `dbConnection` and a `port`? This is where we tell **Integrated** what to put in that config:
 
 ```typescript
-const server = serverSystem.configure(wire => ({
+const server = serverContext.configure(wire => ({
   server: {
     config: {
       // db is the module name we gave to PostgresDBConnectionModule when
-      // creating the system
+      // creating the context
       dbConnection: wire.from('db'),
 
       /**
@@ -84,9 +97,9 @@ const server = serverSystem.configure(wire => ({
 }));
 ```
 
-`wire.from` allows us to refer to other modules in a system by their name. Did I mention this is all type-safe? It is! Look:
+`wire.from` allows us to refer to other modules in a context by their name. Did I mention this is all type-safe? It is!
 - Referring to a non-existant module will result in a **type** error.
-- Referring to a module that doesn't match the type required in a config will also result in a *type* error.
+- Referring to a module that doesn't match the type required in a config will also result in a **type** error.
 
 You are **not** losing out on type safety when you use **Integrated**.
 
@@ -106,7 +119,7 @@ Let's see what **Integrated** did for you there:
 3. Started each module one by one, wiring in the dependencies that you specified.
 
 In the resulting code the `ServerModule` module never explicitly refers to `PostgresDBConnectionModule`, which means that they're decoupled.
-If tomorrow you decide that you want to use MongoDB, you will just implement a new module and change the system config, without touching any of the code in ServerModule, this is the power of Dependency Injection!
+If tomorrow you decide that you want to use MongoDB, you will just implement a new module and change the context config, without touching any of the code in ServerModule, this is the power of Dependency Injection!
 
 ### Stop it!
 
@@ -120,7 +133,7 @@ Now **Integrated** will go through each initialized module in reverse order and 
 
 But wait, how is it going to stop the express server?
 
-Let's go back and revise our `ServerModule` definition a bit:
+Let's go back and revise our ServerModule definition a bit:
 
 ```typescript
 import { createModule } from '@integrated/core';
@@ -145,31 +158,35 @@ function ServerModule(config: {dbConnection: DBConnection, port: number}) {
 Now instead of returning the `expressServer` as we did before, we wrap it in a
 `createModule` call, which allows us to specify a destructor.
 
-Now **Integrated** can properly stop the server when the system stops.
+Now **Integrated** can properly stop the server when the context stops.
 
-### Systems are modules too
+### Contexts are modules too
 
-When we called `serverSystem.configure`, we got back a function that initializes that system, so why not try this?
+When we called `serverContext.configure`, we got back a function that initializes that context, so why not try this?
 
 ```typescript
-const appSystem = createSystem({
+const appContext = createSystem({
   // System inside a system, wat
   server: server,
-  // Some other systems
+  // Some other modules
   jobRunner: jobRunner,
 });
 ```
 
-*Modules* in **Integrated** are just plain functions, that a *configured system* is also a module.
+*Modules* in **Integrated** are just plain functions, that a *configured context* is also a module.
 
-This makes your code even more composable! You can now compose arbitrarily complex systems into larger systems without writing much glue code.
+This makes your code even more composable! You can now compose arbitrarily complex modules into larger systems without writing much glue code.
 
 
 ## API
 
+### `createContext(definition)`
 
+Creates a context based on the definition. You will need to configure it before use.
 
-## Installation
+| Argument   | Type         | Description                                     |
+| ---        | ---          | ---                                             |
+| definition | T extends {} | The definition object for creating the context. |
 
 ## Acknowledgements
 

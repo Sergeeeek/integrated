@@ -1,8 +1,8 @@
-import { createSystem } from ".";
+import { createContext } from ".";
 import { flatten } from "./util";
 import { Module } from "../dist";
 
-export function createSystemFromDeps(
+export function createContextFromDeps(
   edges: readonly [string, string][],
   moduleFactory: (self: string) => (deps: { [key: string]: unknown }) => unknown
 ): Module<{ [key: string]: unknown }, {}> {
@@ -14,7 +14,7 @@ export function createSystemFromDeps(
     structure[node] = moduleFactory(node);
   }
 
-  const result = createSystem(structure).configure((wire) => {
+  const result = createContext(structure).configure((wire) => {
     const config: {
       [key: string]: { config: { [key: string]: unknown } };
     } = {};

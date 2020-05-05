@@ -1,9 +1,9 @@
-import { createSystem, createArraySocket } from "./index";
+import { createContext, createArraySocket } from "./index";
 import { InputWire } from "./InputWire";
 
 describe("WireFactory", () => {
   describe("wire.from", () => {
-    const exampleSystem = createSystem({
+    const exampleSystem = createContext({
       constant: "constant",
       func: (deps: { something: string }) => deps.something,
     });
@@ -53,7 +53,7 @@ describe("WireFactory", () => {
           },
         }))
       ).toThrowErrorMatchingInlineSnapshot(
-        `"WireFactory.from called with unknown key \\"someRandomKey\\". Valid keys for this system are [\\"constant\\",\\"func\\"]"`
+        `"WireFactory.from called with unknown key \\"someRandomKey\\". Valid keys for this context are [\\"constant\\",\\"func\\"]"`
       );
     });
 
@@ -74,7 +74,7 @@ describe("WireFactory", () => {
   });
 
   describe("wire.into", () => {
-    const exampleSystem = createSystem({
+    const exampleSystem = createContext({
       arraySocket: createArraySocket<number>(),
       constant: 123,
       otherConstant: "constant",
@@ -123,7 +123,7 @@ describe("WireFactory", () => {
           },
         }))
       ).toThrowErrorMatchingInlineSnapshot(
-        `"WireFactory.into called with unknown key \\"someRandomKey\\". Valid output keys for this system are [\\"arraySocket\\"]"`
+        `"WireFactory.into called with unknown key \\"someRandomKey\\". Valid output keys for this context are [\\"arraySocket\\"]"`
       );
     });
 
@@ -136,7 +136,7 @@ describe("WireFactory", () => {
           },
         }))
       ).toThrowErrorMatchingInlineSnapshot(
-        `"WireFactory.into called with key \\"otherConstant\\", but \\"otherConstant\\" is not a Socket in this system. Valid socket keys for this system are [\\"arraySocket\\"]"`
+        `"WireFactory.into called with key \\"otherConstant\\", but \\"otherConstant\\" is not a Socket in this context. Valid socket keys for this context are [\\"arraySocket\\"]"`
       );
     });
   });

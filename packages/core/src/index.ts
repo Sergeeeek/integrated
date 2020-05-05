@@ -92,7 +92,7 @@ type PropagateOptional<T> = {
     [K in Exclude<keyof T, RequiredNestedKeys<T>>]?: T[K];
   };
 
-type SystemConfig<Structure> = PropagateOptional<
+type ContextConfig<Structure> = PropagateOptional<
   {
     [K in keyof Structure]: PropagateOptional<
       RemoveNever<{
@@ -105,20 +105,20 @@ type SystemConfig<Structure> = PropagateOptional<
 >;
 
 /**
- * A system which is configured and ready to start.
+ * A context which is configured and ready to start.
  * You can inspect its definition and config.
  */
-export interface ConfiguredSystem<Structure> extends Module<never, {}> {
+export interface ConfiguredContext<Structure> extends Module<never, {}> {
   /**
-   * This is the system definition that was passed to createSystem in case you need it.
+   * This is the context definition that was passed to createContext in case you need it.
    */
   readonly definition: Structure;
   /**
-   * This is the system config that was returned from the configuration closure.
+   * This is the context config that was returned from the configuration closure.
    */
-  readonly config: SystemConfig<Structure>;
+  readonly config: ContextConfig<Structure>;
   /**
-   * ConfiguredSystem is also a function that you can call. Calling it will start the system.
+   * ConfiguredContext is also a function that you can call. Calling it will start the context.
    *
    * @returns A module that can be stopped
    */
@@ -155,9 +155,9 @@ type MapToResultTypes<Structure> = {
 
 type WireFactory<Structure> = {
   /**
-   * Wires in the resolved value from another module in this system. This will return
-   * an InputWire which will be resolved to an actual value when system is started.
-   * @param  module A different module in this system
+   * Wires in the resolved value from another module in this context. This will return
+   * an InputWire which will be resolved to an actual value when context is started.
+   * @param  module A different module in this context
    * @return        InputWire
    */
   from<M extends keyof Structure>(
@@ -165,8 +165,8 @@ type WireFactory<Structure> = {
   ): InputWire<MapToResultTypes<Structure>[M]>;
   /**
    * Wires the value of an inject into a specified socket. Returns an OutputWire,
-   * which will be used when system is started.
-   * @param  socket Reference to a socket in the system
+   * which will be used when context is started.
+   * @param  socket Reference to a socket in the context
    * @return        OutputWire
    */
   into<Key extends keyof GetSockets<Structure>>(
@@ -179,26 +179,26 @@ type WireFactory<Structure> = {
 };
 
 /**
- * System is the aggregation of modules, that allows to declare dependnecies between
+ * Context is the aggregation of modules, that allows to declare dependnecies between
  * those modules through configuration.
  */
-export type System<Structure> = {
+export type Context<Structure> = {
   /**
-   * Configure takes a closure which should return the system configuration.
+   * Configure takes a closure which should return the context configuration.
    *
    * @param closure - A function that takes a {@link WireFactory} and returns a
    *                  config.
-   * @returns The configured system that can be started.
+   * @returns The configured context that can be started.
    */
   configure(
     /**
-     * @param wire - WireFactory instance for this system. Use {@link WireFactory#from}
+     * @param wire - WireFactory instance for this context. Use {@link WireFactory#from}
      *               and {@link WireFactory#into} to define dependencies between modules
      *               declaratively.
-     * @return A config for this system
+     * @return A config for this context
      */
-    closure: (wire: WireFactory<Structure>) => SystemConfig<Structure>
-  ): ConfiguredSystem<Structure>;
+    closure: (wire: WireFactory<Structure>) => ContextConfig<Structure>
+  ): ConfiguredContext<Structure>;
 };
 
 function createDependencyGraph(
@@ -277,11 +277,11 @@ const allowedModuleConfigKeys = new Set(["config", "inject", "disabled"]);
 
 function validateConfig<Structure>(
   structure: Structure,
-  config: SystemConfig<Structure>
+  config: ContextConfig<Structure>
 ): void {
   if (typeof config !== "object" || config === null || Array.isArray(config)) {
     throw new Error(
-      "System configuration closure should return a plain object"
+      "Context configuration closure should return a plain object"
     );
   }
 
@@ -292,7 +292,7 @@ function validateConfig<Structure>(
 
   if (difference.size > 0) {
     throw new Error(
-      `Config contains keys that don\'t exist in system definition. These keys are: ${prettyPrintArray(
+      `Config contains keys that don\'t exist in context definition. These keys are: ${prettyPrintArray(
         [...difference]
       )}`
     );
@@ -321,26 +321,26 @@ function validateConfig<Structure>(
 }
 
 /**
- * Creates a system that can be configured later.
+ * Creates a context that can be configured later.
  *
  * @remarks
  *
  * This is the main entry point for working with this library. Your app, or some
- * part of your app will likely be defined as a system.
+ * part of your app will likely be defined as a context.
  *
- * The structure of a system is a plain JS object, that defines everything that
- * exists in this system. Check out this imaginary example:
+ * The structure of a context is a plain JS object, that defines everything that
+ * exists in this context. Check out this imaginary example:
  * ```ts
- * const system = createSystem({
+ * const context = createContext({
  *   dbConnection: PostgresDBConnectorModule,
  *   apiServer: APIModule,
  * });
  * ```
- * In this example we have defined a simple system with two Modules: dbConnection
- * and apiServer. Having them in one system allows them to depend on each other
- * when configuring the system:
+ * In this example we have defined a simple context with two Modules: dbConnection
+ * and apiServer. Having them in one context allows them to depend on each other
+ * when configuring the context:
  * ```ts
- * system.configure(wire => ({
+ * context.configure(wire => ({
  *   apiServer: {
  *     config: {
  *       dbConnection: wire.from('dbConnection')
@@ -349,7 +349,7 @@ function validateConfig<Structure>(
  * }));
  * ```
  * Code above means that dbConnection will be passed to the apiServer's init function
- * when system starts. Here's how APIModule could be defined:
+ * when context starts. Here's how APIModule could be defined:
  * ```ts
  * import express from 'express';
  *
@@ -366,25 +366,25 @@ function validateConfig<Structure>(
  * }
  * ```
  *
- * Note that you don't need to pass any type info to createSystem (in most cases),
+ * Note that you don't need to pass any type info to createContext (in most cases),
  * because TypeScript can infer everything.
  *
- * @param structure - A definition of modules for this system
+ * @param structure - A definition of modules for this context
  */
-export function createSystem<Structure extends {}>(
+export function createContext<Structure extends {}>(
   structure: Structure
-): System<Structure> {
+): Context<Structure> {
   if (
     typeof structure !== "object" ||
     structure === null ||
     Array.isArray(structure)
   ) {
-    throw new Error("createSystem only accepts objects");
+    throw new Error("createContext only accepts objects");
   }
   return {
-    configure(closure): ConfiguredSystem<Structure> {
+    configure(closure): ConfiguredContext<Structure> {
       if (typeof closure !== "function") {
-        throw new Error("System.configure only accepts functions");
+        throw new Error("Context.configure only accepts functions");
       }
       const wireFactory: WireFactory<Structure> = {
         from(key) {
@@ -394,7 +394,7 @@ export function createSystem<Structure extends {}>(
           if (!(key in structure)) {
             const validKeys = Object.getOwnPropertyNames(structure);
             throw new Error(
-              `WireFactory.from called with unknown key "${key}". Valid keys for this system are ${prettyPrintArray(
+              `WireFactory.from called with unknown key "${key}". Valid keys for this context are ${prettyPrintArray(
                 validKeys
               )}`
             );
@@ -414,7 +414,7 @@ export function createSystem<Structure extends {}>(
               structure
             ).filter((prop) => isSocket(structure[prop]));
             throw new Error(
-              `WireFactory.into called with unknown key "${key}". Valid output keys for this system are ${prettyPrintArray(
+              `WireFactory.into called with unknown key "${key}". Valid output keys for this context are ${prettyPrintArray(
                 validKeys
               )}`
             );
@@ -424,7 +424,7 @@ export function createSystem<Structure extends {}>(
               structure
             ).filter((prop) => isSocket(structure[prop]));
             throw new Error(
-              `WireFactory.into called with key "${key}", but "${key}" is not a Socket in this system. Valid socket keys for this system are ${prettyPrintArray(
+              `WireFactory.into called with key "${key}", but "${key}" is not a Socket in this context. Valid socket keys for this context are ${prettyPrintArray(
                 validKeys
               )}`
             );
@@ -447,7 +447,7 @@ export function createSystem<Structure extends {}>(
         };
       } = config;
 
-      const configuredSystem = (): Module<MapToResultTypes<Structure>, {}> => {
+      const configuredContext = (): Module<MapToResultTypes<Structure>, {}> => {
         const moduleDepsPairs: (readonly [
           string,
           {
@@ -480,13 +480,16 @@ export function createSystem<Structure extends {}>(
         const sortedModules = toposort.array(nodes, dependencyGraph);
 
         /**
-         * Track how many modules are initialized, so we can destroy them properly in case system fails to start
+         * Track how many modules are initialized, so we can destroy them properly in case context fails to start
          */
         let completedModulesIndex = 0;
 
         const context: Partial<MapToResultTypes<Structure>> = {};
         const initializedModules: {
-          [key: string]: { stop(): void; inject(): { [key: string]: unknown } };
+          [key: string]: {
+            stop(): void;
+            inject(): { [key: string]: unknown } | void;
+          };
         } = {};
 
         try {
@@ -699,12 +702,12 @@ export function createSystem<Structure extends {}>(
           .build();
       };
 
-      Object.assign(configuredSystem, {
+      Object.assign(configuredContext, {
         definition: structure,
         config,
       });
 
-      return configuredSystem as ConfiguredSystem<Structure>;
+      return configuredContext as ConfiguredContext<Structure>;
     },
   };
 }

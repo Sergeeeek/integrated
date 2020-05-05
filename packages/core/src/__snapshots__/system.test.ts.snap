@@ -1,32 +1,32 @@
 // Jest Snapshot v1, https://goo.gl/fbAQLP
 
-exports[`system system configure function should check that config closure doesn't return "string" 1`] = `"System configuration closure should return a plain object"`;
+exports[`context context configure function should check that config closure doesn't return "string" 1`] = `"Context configuration closure should return a plain object"`;
 
-exports[`system system configure function should check that config closure doesn't return [] 1`] = `"System configuration closure should return a plain object"`;
+exports[`context context configure function should check that config closure doesn't return [] 1`] = `"Context configuration closure should return a plain object"`;
 
-exports[`system system configure function should check that config closure doesn't return [Function anonymous] 1`] = `"System configuration closure should return a plain object"`;
+exports[`context context configure function should check that config closure doesn't return [Function anonymous] 1`] = `"Context configuration closure should return a plain object"`;
 
-exports[`system system configure function should check that config closure doesn't return 123 1`] = `"System configuration closure should return a plain object"`;
+exports[`context context configure function should check that config closure doesn't return 123 1`] = `"Context configuration closure should return a plain object"`;
 
-exports[`system system configure function should check that config closure doesn't return Symbol() 1`] = `"System configuration closure should return a plain object"`;
+exports[`context context configure function should check that config closure doesn't return Symbol() 1`] = `"Context configuration closure should return a plain object"`;
 
-exports[`system system configure function should check that config closure doesn't return null 1`] = `"System configuration closure should return a plain object"`;
+exports[`context context configure function should check that config closure doesn't return null 1`] = `"Context configuration closure should return a plain object"`;
 
-exports[`system system configure function should check that config closure doesn't return true 1`] = `"System configuration closure should return a plain object"`;
+exports[`context context configure function should check that config closure doesn't return true 1`] = `"Context configuration closure should return a plain object"`;
 
-exports[`system system configure function should check that config closure doesn't return undefined 1`] = `"System configuration closure should return a plain object"`;
+exports[`context context configure function should check that config closure doesn't return undefined 1`] = `"Context configuration closure should return a plain object"`;
 
-exports[`system system start dependency resolution should give an error when you try to depend on a disabled module 1`] = `
+exports[`context context start dependency resolution should give an error when you try to depend on a disabled module 1`] = `
 "Module \\"module\\" has a dependency \\"constant\\" at config path \\"module.config.constant\\", but that dependency is disabled through config and InputWire is not optional.
 Please remove the disabled flag from \\"constant\\" or make the dependency at \\"module.config.constant\\" optional."
 `;
 
-exports[`system system start order of initialization injects should throw an error when OutputWire is not provided for an inject 1`] = `
+exports[`context context start order of initialization injects should throw an error when OutputWire is not provided for an inject 1`] = `
 "Tried to inject a value from \\"module\\", but either the value was not provided or inject destination was not configured.
 See error above for more details."
 `;
 
-exports[`system system start order of initialization injects should throw an error when OutputWire is not provided for an inject 2`] = `
+exports[`context context start order of initialization injects should throw an error when OutputWire is not provided for an inject 2`] = `
 Array [
   Array [
     "Provided by module: ",
