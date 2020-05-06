@@ -180,13 +180,109 @@ This makes your code even more composable! You can now compose arbitrarily compl
 
 ## API
 
-### `createContext(definition)`
+### `createContext(definition): Context`
 
-Creates a context based on the definition. You will need to configure it before use.
+Creates a context based on the definition.
 
 | Argument   | Type         | Description                                     |
 | ---        | ---          | ---                                             |
 | definition | T extends {} | The definition object for creating the context. |
+
+`definition` is a plain JS object. Each key is an arbitrary string that can contain these values:
+
+- **Functions**:
+
+  Will be executed when context starts.
+  Functions that have only one object argument will be configurable by **Integrated**.
+  Return value will be used as the initialized value
+
+- **Sockets**:
+
+  Allow to `inject` your modules into them, reversing the dependency.
+
+- **Other values**:
+
+  No special treatment, will be stored as is.
+
+**Example**
+
+```typescript
+const context = createContext({
+  stringConstant: 'simple string constant',
+  objConstant: {you: 'can put any values here'},
+
+  module: () => {
+    console.log('module init logic goes here');
+    // ...
+
+    return moduleInstance;
+  }
+
+  strings: createArraySocket<string>(), // we'll get to that later
+});
+```
+
+**Returns**
+
+A `Context` instance.
+
+**Methods**
+
+#### `context.configure(configClosure: (wire: WireFactory) => ContextConfig): ConfiguredContext`
+
+Configures the context. This is where you can specify dependencies between modules in a system.
+
+- **configClosure(wire: WireFactory): ContextConfig**
+
+  A function which does the configuration.
+
+
+- **Arguments**
+  - `wire` (WireFactory): An object that allows to wire dependencies
+    - `wire.from(key: Key)`: Takes the module key, which is a key in the definition object,
+    and creates a refernce to that module, that you can put in config
+    - `wire.into(key: Key, config?)`: Takes the key of a socket and an optional config for that socket.
+    Creates a reference to that socket that you can use in a config to inject a value into a socket.
+- **Returns**: `{ [keyFromDefinition]: ModuleSettings }`. Where ModuleSettings is an object with keys:
+  - `config`: if your module is configurable (a function module with one object argument) then `config` is required.
+
+    This value must match the structure of your module's config, but instead of providing concrete values you can provide **references** to other modules, which will be substituted with values of those modules.
+  - `inject`: this object has an optional `self` key, and other injection keys provided by the function module. Values of this modules are references to sockets obtained from `wire.into`.
+  - `disabled?: boolean`: should this module be disabled? Optional, false by default. If you depend on a disabled module,
+  you will get an error when context starts. If you want to optionally depend on a module, then use `wire.from('...').optional`, it will resolve to undefined if module is disabled.
+
+**Example**
+
+```typescript
+const context = createContext({
+  constant: 'constant',
+  moduleWithConfig: (config: {keyFromModuleConfig: string}) => 'module instance',
+  strings: createArraySocket<string>(),
+});
+
+const configuredContext = context.configure(wire => {
+  return {
+    moduleWithConfig: {
+      // providing a config for constants is optional
+      config: {
+        keyFromModuleConfig: wire.from('constant'),
+        inject: { self: wire.into('strings') }
+      },
+      constant: {
+        inject: { self: wire.into('strings') }
+      },
+    }
+  };
+});
+
+console.log(configuredContext().instance)
+// {
+//   constant: 'constant',
+//   moduleWithConfig: 'module instance',
+//   strings: ['constant', 'module instance']
+// }
+```
+
 
 ## Acknowledgements
 
