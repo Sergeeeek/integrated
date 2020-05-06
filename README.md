@@ -263,11 +263,12 @@ const context = createContext({
 const configuredContext = context.configure(wire => {
   return {
     moduleWithConfig: {
-      // providing a config for constants is optional
       config: {
         keyFromModuleConfig: wire.from('constant'),
+        // if module doesn't have additional injectable things, inject key is also optional
         inject: { self: wire.into('strings') }
       },
+      // providing a config for constants is optional
       constant: {
         inject: { self: wire.into('strings') }
       },
