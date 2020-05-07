@@ -204,6 +204,10 @@ Creates a context based on the definition.
 
   No special treatment, will be stored as is.
 
+**Returns**
+
+A `Context` instance.
+
 **Example**
 
 ```typescript
@@ -222,9 +226,6 @@ const context = createContext({
 });
 ```
 
-**Returns**
-
-A `Context` instance.
 
 **Methods**
 
@@ -232,24 +233,30 @@ A `Context` instance.
 
 Configures the context. This is where you can specify dependencies between modules in a system.
 
-- **configClosure(wire: WireFactory): ContextConfig**
-
-  A function which does the configuration.
-
+| Argument      | Type                                   | Description                              |
+| ---           | ---                                    | ---                                      |
+| configClosure | `(wire: WireFactory) => ContextConfig` | A function which does the configuration. |
 
 - **Arguments**
-  - `wire` (WireFactory): An object that allows to wire dependencies
-    - `wire.from(key: Key)`: Takes the module key, which is a key in the definition object,
-    and creates a refernce to that module, that you can put in config
-    - `wire.into(key: Key, config?)`: Takes the key of a socket and an optional config for that socket.
-    Creates a reference to that socket that you can use in a config to inject a value into a socket.
-- **Returns**: `{ [keyFromDefinition]: ModuleSettings }`. Where ModuleSettings is an object with keys:
-  - `config`: if your module is configurable (a function module with one object argument) then `config` is required.
+  - **configClosure(wire: WireFactory): ContextConfig**
 
-    This value must match the structure of your module's config, but instead of providing concrete values you can provide **references** to other modules, which will be substituted with values of those modules.
-  - `inject`: this object has an optional `self` key, and other injection keys provided by the function module. Values of this modules are references to sockets obtained from `wire.into`.
-  - `disabled?: boolean`: should this module be disabled? Optional, false by default. If you depend on a disabled module,
-  you will get an error when context starts. If you want to optionally depend on a module, then use `wire.from('...').optional`, it will resolve to undefined if module is disabled.
+    
+
+  - **Arguments**
+    - `wire` (WireFactory): An object that allows to wire dependencies
+      - `wire.from(key: Key)`: Takes the module key, which is a key in the definition object,
+      and creates a refernce to that module, that you can put in config
+      - `wire.into(key: Key, config?)`: Takes the key of a socket and an optional config for that socket.
+      Creates a reference to that socket that you can use in a config to inject a value into a socket.
+  - **Returns**: `{ [keyFromDefinition]: ModuleSettings }`. Where ModuleSettings is an object with keys:
+    - `config`: if your module is configurable (a function module with one object argument) then `config` is required.
+
+      This value must match the structure of your module's config, but instead of providing concrete values you can provide **references** to other modules, which will be substituted with values of those modules.
+    - `inject`: this object has an optional `self` key, and other injection keys provided by the function module. Values of this modules are references to sockets obtained from `wire.into`.
+    - `disabled?: boolean`: should this module be disabled? Optional, false by default. If you depend on a disabled module,
+    you will get an error when context starts. If you want to optionally depend on a module, then use `wire.from('...').optional`, it will resolve to undefined if module is disabled.
+- **Returns**
+  A function which starts the context, and also has some additional properties for inspection.
 
 **Example**
 
@@ -284,6 +291,151 @@ console.log(configuredContext().instance)
 // }
 ```
 
+### WireFactory
+
+**Methods**
+
+#### from(contextKey: string): InputWire
+
+Allows you to specify dependencies between modules when configuring the context.
+When a module has a config, instead of passing values directly, you can pass the result of this function.
+
+| Argument   | Type   | Description                               |
+| ---        | ---    | ---                                       |
+| contextKey | string | A module name from the context definition |
+
+**Returns**
+
+An instance of [`InputWire`](#inputwire), which is a reference to a module in context.
+
+**Example**
+
+```typescript
+const context = createContext({
+  computedWelcome: () => {
+    // Imagine some dynamic string creation here
+    return 'Welcome to my server!';
+  },
+  server: (config: {port: number, welcomeMsg: string}) => {
+    // ... do setup using config
+  },
+});
+
+context.configure((wire /* here's our WireFactory */) => {
+  return {
+    server: {
+      // This has the same type as the first argument of server module,
+      // except that you can replace any normal values like number and string with
+      // InputWire<number> and InputWire<string>
+      config: {
+        // Pass directly
+        port: 3000,
+        // Reference from context
+        welcomeMsg: wire.from('computedWelcome'),
+      }
+    }
+  };
+});
+```
+
+#### into(contextKey: string, config?: SocketConfig): OutputWire
+
+Allows you to inject a module into a `Socket`.
+
+| Argument   | Type         | Description                                                                       |
+| ---        | ---          | ---                                                                               |
+| contextKey | string       | Socket name from context definition                                               |
+| config     | SocketConfig | Config for the socket, it's different for every socket, please look at their docs |
+
+**Returns**
+
+An instance of `OutputWire`, which is a reference to a socket in context.
+
+**Example**
+
+```typescript
+const context = createContext({
+  module1: () => 'string1',
+  module2: () => 'string2',
+  module3: () => 'string3',
+  strings: createArraySocket<string>(),
+  consumer: (config: {strings: string[]}) => console.log(strings.join(', ')),
+});
+
+const configuredContext = context.configure(wire => {
+  return {
+    module1: { inject: { self: wire.into('strings') } },
+    module2: { inject: { self: wire.into('strings', {after: 'module1', before: 'module2'} /* config is specific to ArraySocket */) } },
+    module3: { inject: { self: wire.into('strings') } },
+    consumer: {
+      config: {
+        strings: wire.from('strings'),
+      },
+    },
+  };
+});
+
+configuredContext(); // prints "string1, string2, string3"
+```
+
+### InputWire
+
+A reference to another module in context. You can create it only from `WireFactory.from`.
+
+InputWire is resolved to the actual instance of a module at context start time. Having an `InputWire` in the config of a module
+creates a dependency to that module, which changes order of initialization.
+
+**Properties**
+
+#### `.optional`
+
+Lets you optionally depend on a module. If the module you depend on gets disabled
+context will not crash on startup if you only optionally depend on it. in that case you will receive `undefined` instead of the module instance.
+
+**Returns**
+
+For `InputWire<T>` it will return `InputWire<T | undefined>`
+
+**Methods**
+
+#### `map(mapper): InputWire`
+
+Allows you to transform dependencies to make them fit without implementing additional modules in context that just do transformations.
+
+Very useful when trying to bridge slightly incompatible modules together.
+
+| Argument | Type     | Description                                                                                   |
+| ---      | ---      | ---                                                                                           |
+| mapper   | Function | Function that takes the type of value referred by InputWire and transorms it into a new value |
+
+**Returns**
+
+A new `InputWire`, which takes the result of the base `InputWire` and transorms it using the `mapper`.
+
+**Example**
+
+```typescript
+const configuredContext = createContext({
+  constant: 'constant',
+  repeatPrint: (config: {value: string, repeatCount: number}) => {
+    console.log('Repeating!');
+    for (let i = 0; i < config.repeatCount; i++) {
+      console.log(config.value);
+    }
+  }
+}).configure(wire => {
+  return {
+    repeatPrint: {
+      config: {
+        value: wire.from('constant'),
+        repeatCount: wire.from('constant').map(str => str.length) // this is now an InputWire<number>
+      }
+    }
+  };
+});
+
+configuredContext(); // prints 'constant' 8 times
+```
 
 ## Acknowledgements
 
