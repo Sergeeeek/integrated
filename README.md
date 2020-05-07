@@ -240,8 +240,6 @@ Configures the context. This is where you can specify dependencies between modul
 - **Arguments**
   - **configClosure(wire: WireFactory): ContextConfig**
 
-    
-
   - **Arguments**
     - `wire` (WireFactory): An object that allows to wire dependencies
       - `wire.from(key: Key)`: Takes the module key, which is a key in the definition object,
@@ -294,8 +292,9 @@ console.log(configuredContext().instance)
 ### WireFactory
 
 **Methods**
+---
 
-#### from(contextKey: string): InputWire
+#### `from(contextKey: string): InputWire`
 
 Allows you to specify dependencies between modules when configuring the context.
 When a module has a config, instead of passing values directly, you can pass the result of this function.
@@ -338,7 +337,9 @@ context.configure((wire /* here's our WireFactory */) => {
 });
 ```
 
-#### into(contextKey: string, config?: SocketConfig): OutputWire
+---
+
+#### `into(contextKey: string, config?: SocketConfig): OutputWire`
 
 Allows you to inject a module into a `Socket`.
 
@@ -386,6 +387,7 @@ InputWire is resolved to the actual instance of a module at context start time. 
 creates a dependency to that module, which changes order of initialization.
 
 **Properties**
+---
 
 #### `.optional`
 
@@ -397,6 +399,7 @@ context will not crash on startup if you only optionally depend on it. in that c
 For `InputWire<T>` it will return `InputWire<T | undefined>`
 
 **Methods**
+---
 
 #### `map(mapper): InputWire`
 
