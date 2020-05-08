@@ -226,7 +226,6 @@ const context = createContext({
 });
 ```
 
-
 **Methods**
 
 #### `context.configure(configClosure: (wire: WireFactory) => ContextConfig): ConfiguredContext`
@@ -242,15 +241,11 @@ Configures the context. This is where you can specify dependencies between modul
 
   - **Arguments**
     - `wire` (WireFactory): An object that allows to wire dependencies
-      - `wire.from(key: Key)`: Takes the module key, which is a key in the definition object,
-      and creates a refernce to that module, that you can put in config
-      - `wire.into(key: Key, config?)`: Takes the key of a socket and an optional config for that socket.
-      Creates a reference to that socket that you can use in a config to inject a value into a socket.
   - **Returns**: `{ [keyFromDefinition]: ModuleSettings }`. Where ModuleSettings is an object with keys:
     - `config`: if your module is configurable (a function module with one object argument) then `config` is required.
 
       This value must match the structure of your module's config, but instead of providing concrete values you can provide **references** to other modules, which will be substituted with values of those modules.
-    - `inject`: this object has an optional `self` key, and other injection keys provided by the function module. Values of this modules are references to sockets obtained from `wire.into`.
+    - `inject`: this object has an optional `self` key, and other injection keys provided by the function module. Values of this modules are references to sockets obtained from [`wire.into`](#intocontextkey-string-config-socketconfig-outputwire). See `createArraySocket`.
     - `disabled?: boolean`: should this module be disabled? Optional, false by default. If you depend on a disabled module,
     you will get an error when context starts. If you want to optionally depend on a module, then use `wire.from('...').optional`, it will resolve to undefined if module is disabled.
 - **Returns**
@@ -288,6 +283,8 @@ console.log(configuredContext().instance)
 //   strings: ['constant', 'module instance']
 // }
 ```
+
+
 
 ### WireFactory
 
@@ -337,7 +334,10 @@ context.configure((wire /* here's our WireFactory */) => {
 });
 ```
 
+
+
 ---
+
 
 #### `into(contextKey: string, config?: SocketConfig): OutputWire`
 
@@ -366,7 +366,7 @@ const context = createContext({
 const configuredContext = context.configure(wire => {
   return {
     module1: { inject: { self: wire.into('strings') } },
-    module2: { inject: { self: wire.into('strings', {after: 'module1', before: 'module2'} /* config is specific to ArraySocket */) } },
+    module2: { inject: { self: wire.into('strings', {after: 'module1', before: 'module3'} /* config is specific to ArraySocket */) } },
     module3: { inject: { self: wire.into('strings') } },
     consumer: {
       config: {
@@ -379,6 +379,8 @@ const configuredContext = context.configure(wire => {
 configuredContext(); // prints "string1, string2, string3"
 ```
 
+
+
 ### InputWire
 
 A reference to another module in context. You can create it only from `WireFactory.from`.
@@ -386,8 +388,7 @@ A reference to another module in context. You can create it only from `WireFacto
 InputWire is resolved to the actual instance of a module at context start time. Having an `InputWire` in the config of a module
 creates a dependency to that module, which changes order of initialization.
 
-**Properties**
----
+#### Properties
 
 #### `.optional`
 
@@ -398,8 +399,7 @@ context will not crash on startup if you only optionally depend on it. in that c
 
 For `InputWire<T>` it will return `InputWire<T | undefined>`
 
-**Methods**
----
+#### Methods
 
 #### `map(mapper): InputWire`
 
@@ -440,7 +440,141 @@ const configuredContext = createContext({
 configuredContext(); // prints 'constant' 8 times
 ```
 
+### `createModule<T>(instance: T): ModuleBuilder<T, {}>`
+
+Module can be return from a function in a context to specify a destructor or an inject for your module.
+
+| Argument | Type | Description                                                                                                                |
+| ---      | ---  | ---                                                                                                                        |
+| instance | any  | Instance of your module. You would normally just return that from your function, but with createModule you can augment it. |
+
+**Returns**
+
+A `ModuleBuilder` instance.
+
+### `ModuleBuilder<Instance, Injects>`
+
+A helper class for creating a `Module`
+
+#### Methods
+
+#### `withDestructor(destructorFn: () => void): ModuleBuilder<Instance, Injects>`
+
+Provide a custom destructor for your module instance.
+
+| Argument     | Type     | Description                           |
+| ---          | ---      | ---                                   |
+| destructorFn | function | A function which destroys your module |
+
+**Returns**
+A `ModuleBuilder` with a destructor. Calling `withDestructor` again will overwrite it.
+
+---
+
+
+#### `withInjects<NewInjects extends {[key: string]: unkown}>(injectFn: () => NewInjects): ModuleBuilder<Instance, NewInjects>`
+
+Provide an additional injection for your module. This is useful for implementing plugins.
+
+| Argument | Type     | Description                                                                                                        |
+| ---      | ---      | ---                                                                                                                |
+| injectFn | function | A function which should return an object where keys give name to injects and values specify what's being injected. |
+
+**Returns**
+
+A `ModuleBuilder` with new injects. Calling `withInjects` again will overwrite them.
+
+**Example**
+
+```typescript```
+// modules/AuthModule.ts
+function AuthModule(config {...}) {
+  const authInstance = // do some setup here...
+
+  return createModule(authInstance)
+    .withInjects(() => {
+      return {
+        // Let's inject server middleware which adds auth logic here
+        middleware: (req, res, next) => {
+          if (authInstance.isAuthorised(req)) {
+            next();
+          } else {
+            res.send('NOT AUTHORISED');
+          }
+        }
+      };
+    })
+    .build();
+}
+
+// modules/ServerModule.ts
+function ServerModule(config: {middleware: Array<(req, res, next) => void>}) {
+  const app = express();
+
+  config.middleware.forEach(middleware => app.use(middleware));
+
+  app.listen(3000);
+
+  return createModule(app)
+    .withDestructor(() => app.close())
+    .build();
+}
+
+
+// App.ts
+const context = createContext({
+  server: ServerModule,
+  middleware: createArraySocket<(req, res, next) => void>(), // create an injection point for all modules which have middleware
+  auth: AuthModule,
+}).configure(wire => {
+  return {
+    server: {
+      config: {
+        middleware: wire.from('middleware'), // resolve all injected middleware
+      },
+    },
+    auth: {
+      // this should match the object that was returned in the injector function passed to .withInjects
+      inject: {
+        middleware: wire.into('middleware'),
+      },
+    },
+  };
+});
+
+context(); // server initialized with auth middleware
+
+---
+
+
+#### `build(): Module`
+
+### Module
+
+
+#### Properties
+
+#### `.instance`
+
+
+
+#### Methods
+
+#### `stop(): void`
+
+
+---
+
+
+#### `inject(): {[key: string]: any} | void`
+
 ## Acknowledgements
 
+- integrant (clojure library)
+- Uber's Fusion.js
 
 ## License
+
+Copyright © 2020 Sergey Poznyak
+
+Released under the MIT license.
