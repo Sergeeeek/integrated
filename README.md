@@ -486,7 +486,7 @@ A `ModuleBuilder` with new injects. Calling `withInjects` again will overwrite t
 
 **Example**
 
-```typescript```
+```typescript
 // modules/AuthModule.ts
 function AuthModule(config {...}) {
   const authInstance = // do some setup here...
@@ -543,6 +543,7 @@ const context = createContext({
 });
 
 context(); // server initialized with auth middleware
+```
 
 ---
 
