@@ -1,7 +1,17 @@
 {
   "name": "@integrated/core",
+  "version": "0.1.1",
   "description": "A declarative micro-framework for Dependency Injection in TypeScript and JavaScript.",
-  "keywords": ["dependency", "injection", "di", "inject", "typescript", "declarative", "architecture", "plugin"],
+  "keywords": [
+    "dependency",
+    "injection",
+    "di",
+    "inject",
+    "typescript",
+    "declarative",
+    "architecture",
+    "plugin"
+  ],
   "homepage": "https://github.com/Sergeeeek/integrated",
   "bugs": {
     "url": "https://github.com/Sergeeeek/integrated/issues",
@@ -16,7 +26,6 @@
     "url": "https://github.com/Sergeeeek/integrated.git"
   },
   "amdName": "IntegratedCore",
-  "version": "0.1.0",
   "source": "src/index.ts",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
