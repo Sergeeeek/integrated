@@ -1,16 +1,28 @@
 {
   "name": "@integrated/core",
+  "description": "A declarative micro-framework for Dependency Injection in TypeScript and JavaScript.",
+  "keywords": ["dependency", "injection", "di", "inject", "typescript", "declarative", "architecture", "plugin"],
+  "homepage": "https://github.com/Sergeeeek/integrated",
+  "bugs": {
+    "url": "https://github.com/Sergeeeek/integrated/issues",
+    "email": "Sergeeeekg@gmail.com"
+  },
+  "author": {
+    "name": "Sergey Poznyak",
+    "email": "Sergeeeekg@gmail.com"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Sergeeeek/integrated.git"
+  },
   "amdName": "IntegratedCore",
-  "version": "1.0.0",
+  "version": "0.1.0",
   "source": "src/index.ts",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "module": "dist/index.module.js",
   "unpkg": "dist/index.umd.js",
-  "repository": "git@github.com:Sergeeeek/ts-module-system.git",
-  "author": "Sergey Poznyak <Sergeeeekg@gmail.com>",
   "license": "MIT",
-  "private": true,
   "devDependencies": {
     "@types/jest": "^25.2.1",
     "@types/toposort": "^2.0.3",

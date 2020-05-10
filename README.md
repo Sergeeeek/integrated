@@ -5,27 +5,62 @@ A declarative micro-framework for Dependency Injection in TypeScript and JavaScr
 
 ## Installation
 
-**NPM**:
+**npm**:
 ```sh
 $ npm install --save @integrated/core
 ```
 
-**Yarn**:
+**yarn**:
 ```sh
 $ yarn add @integrated/core
 ```
 
 ## Table Of Contents
 
+- [Integrated](#integrated)
+  * [Installation](#installation)
+  * [Table Of Contents](#table-of-contents)
+- [Usage](#usage)
+  * [Create a module](#create-a-module)
+  * [Assemble it!](#assemble-it)
+  * [Configure it!](#configure-it)
+  * [Start it!](#start-it)
+  * [Stop it!](#stop-it)
+  * [Contexts are modules too](#contexts-are-modules-too)
+- [API](#api)
+    + [`createContext(definition): Context`](#createcontextdefinition-context)
+      - [`context.configure(configClosure: (wire: WireFactory) => ContextConfig): ConfiguredContext`](#contextconfigureconfigclosure-wire-wirefactory--contextconfig-configuredcontext)
+    + [WireFactory](#wirefactory)
+      - [Methods](#methods)
+      - [`from(contextKey: string): InputWire`](#fromcontextkey-string-inputwire)
+      - [`into(contextKey: string, config?: SocketConfig): OutputWire`](#intocontextkey-string-config-socketconfig-outputwire)
+    + [InputWire](#inputwire)
+      - [Properties](#properties)
+      - [`.optional`](#optional)
+      - [Methods](#methods-1)
+      - [`map(mapper): InputWire`](#mapmapper-inputwire)
+    + [`createModule(instance: T): ModuleBuilder`](#createmoduleinstance-t-modulebuilder)
+  * [`ModuleBuilder`](#modulebuilder)
+      - [Methods](#methods-2)
+      - [`withDestructor(destructorFn: () => void): ModuleBuilder`](#withdestructordestructorfn---void-modulebuilder)
+      - [`withInjects(injectFn: () => NewInjects): ModuleBuilder`](#withinjectsinjectfn---newinjects-modulebuilder)
+      - [`build(): Module`](#build-module)
+    + [`Module`](#module)
+      - [Properties](#properties-1)
+      - [`.instance`](#instance)
+      - [Methods](#methods-3)
+      - [`stop(): void`](#stop-void)
+      - [`inject(): {[key: string]: any} | void`](#inject-key-string-any--void)
+  * [Acknowledgements](#acknowledgements)
+  * [License](#license)
 
-
-## Usage
+# Usage
 
 Let's make an example express application which fetches some stuff from a database.
 
 To do this in **Integrated** we'll first need a *module*:
 
-### Create a module
+## Create a module
 
 ```typescript
 // We'll make a simple express server that fetches some stuff
@@ -49,7 +84,7 @@ these are the *dependencies* of our ServerModule.
 > This definition of a module doesn't allow for the server to be stopped yet,
 don't worry we'll get to that later.
 
-### Assemble it!
+## Assemble it!
 
 We need to tell **Integrated** about the modules that we have, we do that by
 creating a new *context*:
@@ -73,7 +108,7 @@ between different modules. Lets do that!
 
 > Side note: you can have as many contexts as you want, they do not have global state.
 
-### Configure it!
+## Configure it!
 
 Remember in the `ServerModule` definition that it had a config argument which took a `dbConnection` and a `port`? This is where we tell **Integrated** what to put in that config:
 
@@ -103,7 +138,7 @@ const server = serverContext.configure(wire => ({
 
 You are **not** losing out on type safety when you use **Integrated**.
 
-### Start it!
+## Start it!
 
 ```typescript
 server();
@@ -121,7 +156,7 @@ Let's see what **Integrated** did for you there:
 In the resulting code the `ServerModule` module never explicitly refers to `PostgresDBConnectionModule`, which means that they're decoupled.
 If tomorrow you decide that you want to use MongoDB, you will just implement a new module and change the context config, without touching any of the code in ServerModule, this is the power of Dependency Injection!
 
-### Stop it!
+## Stop it!
 
 ```typescript
 const serverInstance = server();
@@ -160,7 +195,7 @@ Now instead of returning the `expressServer` as we did before, we wrap it in a
 
 Now **Integrated** can properly stop the server when the context stops.
 
-### Contexts are modules too
+## Contexts are modules too
 
 When we called `serverContext.configure`, we got back a function that initializes that context, so why not try this?
 
@@ -178,7 +213,7 @@ const appContext = createSystem({
 This makes your code even more composable! You can now compose arbitrarily complex modules into larger systems without writing much glue code.
 
 
-## API
+# API
 
 ### `createContext(definition): Context`
 
@@ -288,8 +323,7 @@ console.log(configuredContext().instance)
 
 ### WireFactory
 
-**Methods**
----
+#### Methods
 
 #### `from(contextKey: string): InputWire`
 
@@ -452,7 +486,7 @@ Module can be return from a function in a context to specify a destructor or an 
 
 A `ModuleBuilder` instance.
 
-### `ModuleBuilder<Instance, Injects>`
+## `ModuleBuilder<Instance, Injects>`
 
 A helper class for creating a `Module`
 
@@ -548,31 +582,34 @@ context(); // server initialized with auth middleware
 ---
 
 
-#### `build(): Module`
+#### `build(): Module<Instance, Injects>`
 
-### Module
+### `Module<Instance, Injects>`
 
+Used when you need to provide a destructor or additional injects except for `self`.
 
 #### Properties
 
 #### `.instance`
 
-
+Instance value of a module.
 
 #### Methods
 
 #### `stop(): void`
 
+Destroys the module. Implementation of the destructor is provided in `ModuleBuilder.withDestructor`
 
 ---
 
-
 #### `inject(): {[key: string]: any} | void`
+
+Creates a map of "injects", some values that you can inject into sockets in context. You probably will never use this directly, as it's used internally by **Integrated**
 
 ## Acknowledgements
 
-- integrant (clojure library)
-- Uber's Fusion.js
+- [Integrant](https://github.com/weavejester/integrant)
+- [Uber's Fusion.js](https://fusionjs.com/)
 
 ## License
 

@@ -9,6 +9,7 @@
   "module": "dist/index.module.js",
   "unpkg": "dist/index.umd.js",
   "license": "MIT",
+  "private": true,
   "dependencies": {
     "@integrated/core": "^1.0.0"
   },
