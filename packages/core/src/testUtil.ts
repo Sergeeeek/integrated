@@ -1,6 +1,5 @@
-import { createContext } from ".";
+import { createContext, Module } from ".";
 import { flatten } from "./util";
-import { Module } from "../dist";
 
 export function createContextFromDeps(
   edges: readonly [string, string][],
