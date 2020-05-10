@@ -1,6 +1,6 @@
 {
   "name": "integrated",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "repository": "git@github.com:Sergeeeek/ts-module-system.git",
   "author": "Sergey Poznyak <Sergeeeekg@gmail.com>",
   "license": "MIT",
