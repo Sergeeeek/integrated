@@ -52,5 +52,6 @@
     "test": "jest",
     "dev": "microbundle --no-compress --watch",
     "build": "microbundle"
-  }
+  },
+  "gitHead": "0303be0c55340fb7fc7425c59cfaf450c269abf8"
 }

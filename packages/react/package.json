@@ -42,5 +42,6 @@
   "scripts": {
     "dev": "microbundle --no-compress --watch --globals react=React,@integrated/core=IntegratedCore",
     "build": "microbundle --globals react=React,@integrated/core=IntegratedCore"
-  }
+  },
+  "gitHead": "0303be0c55340fb7fc7425c59cfaf450c269abf8"
 }
