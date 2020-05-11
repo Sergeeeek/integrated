@@ -1,7 +1,7 @@
 {
   "name": "@integrated/react-middleware",
   "amdName": "TSModuleSystemReactMiddleware",
-  "version": "1.0.0",
+  "version": "0.2.0",
   "source": "src/index.tsx",
   "main": "dist/index.js",
   "umd:main": "dist/index.umd.js",
