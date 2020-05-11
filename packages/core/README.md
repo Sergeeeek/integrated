@@ -28,29 +28,31 @@ $ yarn add @integrated/core
   * [Stop it!](#stop-it)
   * [Contexts are modules too](#contexts-are-modules-too)
 - [API](#api)
-    + [`createContext(definition): Context`](#createcontextdefinition-context)
+  * [`createContext(definition): Context`](#createcontextdefinition-context)
       - [`context.configure(configClosure: (wire: WireFactory) => ContextConfig): ConfiguredContext`](#contextconfigureconfigclosure-wire-wirefactory--contextconfig-configuredcontext)
-    + [WireFactory](#wirefactory)
+  * [WireFactory](#wirefactory)
       - [Methods](#methods)
       - [`from(contextKey: string): InputWire`](#fromcontextkey-string-inputwire)
       - [`into(contextKey: string, config?: SocketConfig): OutputWire`](#intocontextkey-string-config-socketconfig-outputwire)
-    + [InputWire](#inputwire)
+  * [InputWire](#inputwire)
       - [Properties](#properties)
       - [`.optional`](#optional)
       - [Methods](#methods-1)
       - [`map(mapper): InputWire`](#mapmapper-inputwire)
-    + [`createModule(instance: T): ModuleBuilder`](#createmoduleinstance-t-modulebuilder)
+  * [`createModule(instance: T): ModuleBuilder`](#createmoduleinstance-t-modulebuilder)
   * [`ModuleBuilder`](#modulebuilder)
       - [Methods](#methods-2)
       - [`withDestructor(destructorFn: () => void): ModuleBuilder`](#withdestructordestructorfn---void-modulebuilder)
       - [`withInjects(injectFn: () => NewInjects): ModuleBuilder`](#withinjectsinjectfn---newinjects-modulebuilder)
       - [`build(): Module`](#build-module)
-    + [`Module`](#module)
+  * [`Module`](#module)
       - [Properties](#properties-1)
       - [`.instance`](#instance)
       - [Methods](#methods-3)
       - [`stop(): void`](#stop-void)
       - [`inject(): {[key: string]: any} | void`](#inject-key-string-any--void)
+  * [`createArraySocket()`](#createarraysocket)
+    + [Config](#config)
   * [Acknowledgements](#acknowledgements)
   * [License](#license)
 
@@ -215,7 +217,7 @@ This makes your code even more composable! You can now compose arbitrarily compl
 
 # API
 
-### `createContext(definition): Context`
+## `createContext(definition): Context`
 
 Creates a context based on the definition.
 
@@ -321,7 +323,7 @@ console.log(configuredContext().instance)
 
 
 
-### WireFactory
+## WireFactory
 
 #### Methods
 
@@ -415,7 +417,7 @@ configuredContext(); // prints "string1, string2, string3"
 
 
 
-### InputWire
+## InputWire
 
 A reference to another module in context. You can create it only from `WireFactory.from`.
 
@@ -474,7 +476,7 @@ const configuredContext = createContext({
 configuredContext(); // prints 'constant' 8 times
 ```
 
-### `createModule<T>(instance: T): ModuleBuilder<T, {}>`
+## `createModule<T>(instance: T): ModuleBuilder<T, {}>`
 
 Module can be return from a function in a context to specify a destructor or an inject for your module.
 
@@ -584,7 +586,7 @@ context(); // server initialized with auth middleware
 
 #### `build(): Module<Instance, Injects>`
 
-### `Module<Instance, Injects>`
+## `Module<Instance, Injects>`
 
 Used when you need to provide a destructor or additional injects except for `self`.
 
@@ -606,8 +608,49 @@ Destroys the module. Implementation of the destructor is provided in `ModuleBuil
 
 Creates a map of "injects", some values that you can inject into sockets in context. You probably will never use this directly, as it's used internally by **Integrated**
 
+
+## `createArraySocket<Value>()`
+
+Creates an array socket, that can be put in a context. Array sockets let you inject values into them, essentially reversing the dependency and making a sort of "plug-in"
+way of assempling modules.
+
+Array sockets take values of the type `Value` (generic) via `WireFactory.into`.
+
+When you depend on array sockets via `WireFactory.from`, it will resolve to an array of all injected values into it.
+
+### Config
+
+Sockets, and array sockets in particular, have a concept of config. You can specify that config per value when injecting it using `WireFactory.into`.
+
+For array sockets the config has type:
+
+| Property | Type   | Description                                                                  |
+| ---      | ---    | ---                                                                          |
+| before   | string | Name of the module that should appear before the current one in that socket. |
+| after    | string | Name of the module that should appear after the current one in that socket.  |
+
+```typescript
+// ... context init, etc
+context.configure(wire => {
+  return {
+    otherModule: { inject: self: wire.into('socket') },
+    firstModule: { inject: self: wire.into('socket') }
+    someModule: { inject: { self: wire.into('socket', { before: 'otherModule', after: 'firstModule' } /* config */) } }
+    dependentModule: {
+      config: {
+        modules: wire.from('socket'),
+      }
+    }
+  };
+});
+
+// Dependent module receives: firstModule => someModule => otherModule
+```
+
+
 ## Acknowledgements
 
+Very big sources of inspiration:
 - [Integrant](https://github.com/weavejester/integrant)
 - [Uber's Fusion.js](https://fusionjs.com/)
 
