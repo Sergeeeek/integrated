@@ -716,4 +716,5 @@ export function createContext<Structure extends {}>(
 export { Socket, isSocket, createArraySocket, ArraySocket, ArraySocketConfig };
 
 // Module exports
-export { Module, createModule };
+export { createModule };
+export type { Module };

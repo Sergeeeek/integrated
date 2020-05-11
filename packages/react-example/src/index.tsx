@@ -1,18 +1,18 @@
-import { ReactMiddlewareModule } from '@integrated/react-middleware';
-import { ReactRouterModule } from '@integrated/react-router';
-import { ReactWebModule } from '@integrated/react-web';
-import {createSystem, createArraySocket} from '@integrated/core';
-import * as React from 'react';
+import { ReactMiddlewareModule } from "@integrated/react-middleware";
+import { ReactRouterModule } from "@integrated/react-router";
+import { ReactWebModule } from "@integrated/react";
+import { createContext, createArraySocket } from "@integrated/core";
+import * as React from "react";
 
-import { RouteProps } from 'react-router';
+import { RouteProps } from "react-router";
 
-import { BottomNavigationLink, DashboardModule } from './features/dashboard';
-import { HomeModule } from './features/home';
+import { BottomNavigationLink, DashboardModule } from "./features/dashboard";
+import { HomeModule } from "./features/home";
 
-document.addEventListener('DOMContentLoaded', () => {
-  const system = createSystem({
+document.addEventListener("DOMContentLoaded", () => {
+  const context = createContext({
     /// Constants
-    dashboardPath: '/dashboard',
+    dashboardPath: "/dashboard",
 
     /// React Config
     root: ReactMiddlewareModule,
@@ -25,7 +25,9 @@ document.addEventListener('DOMContentLoaded', () => {
     /**
      * WireHub for injecting ReactMiddleware.
      */
-    middleware: createArraySocket<React.ComponentType<{children?: React.ReactNode}>>(),
+    middleware: createArraySocket<
+      React.ComponentType<{ children?: React.ReactNode }>
+    >(),
 
     /// App Modules
     dashboardLinks: createArraySocket<BottomNavigationLink>(),
@@ -34,39 +36,39 @@ document.addEventListener('DOMContentLoaded', () => {
     home: HomeModule,
   });
 
-  const configuredSystem = system.configure(wire => ({
+  const configuredContext = context.configure((wire) => ({
     react: {
       config: {
-        App: wire.from('router'),
-        selector: '#root'
+        App: wire.from("router"),
+        selector: "#root",
       },
     },
     router: {
       config: {
-        routes: wire.from('routes'),
-        type: 'browser',
-      }
+        routes: wire.from("routes"),
+        type: "browser",
+      },
     },
     root: {
       config: {
-        middleware: wire.from('middleware')
-      }
+        middleware: wire.from("middleware"),
+      },
     },
     dashboard: {
       config: {
-        basePath: wire.from('dashboardPath'),
-        links: wire.from('dashboardLinks')
+        basePath: wire.from("dashboardPath"),
+        links: wire.from("dashboardLinks"),
       },
       inject: {
-        self: [wire.into('routes')]
-      }
+        self: [wire.into("routes")],
+      },
     },
     home: {
       inject: {
-        dashboardLink: wire.into('dashboardLinks')
-      }
-    }
+        dashboardLink: wire.into("dashboardLinks"),
+      },
+    },
   }));
 
-  configuredSystem();
+  configuredContext();
 });
